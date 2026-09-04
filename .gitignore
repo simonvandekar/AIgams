@@ -1,0 +1,13 @@
+# RESI is its own git clone (origin: statimagcoll/RESI); not tracked here.
+# Local modifications to it are synced to the server via rsync (see
+# log/claudeLog.md and repo memory for the workflow) until/unless it's
+# forked and version-controlled separately.
+RESI/
+
+# Simulation output directories (large, regenerable)
+*Sim/
+sim_raw/
+
+.Rhistory
+.Rproj.user/
+.DS_Store
