@@ -287,4 +287,37 @@ continuing ad hoc `rsync` of changed files).
 
 ---
 
+**Prompt 4:**
+> Yeah, create the github repo and give me the prompt to get the new AI setup
+> based on where we leave off, here. [Follow-up: "This is the url:
+> https://github.com/simonvandekar/AIgams.git"]
+
+### Actions
+- No `gh` CLI or github.com SSH key on this machine; confirmed (via
+  `git ls-remote`) that HTTPS access with cached credentials works, so no
+  token/secret handling was needed.
+- Added `.gitignore` (excludes `RESI/` — it stays an independently
+  version-controlled clone of `statimagcoll/RESI`, synced by rsync, not git;
+  also excludes `*Sim/`/`sim_raw/` output dirs and OS/editor cruft).
+- `git init`, committed `instructions/`, `log/`, `tests/`, `main.R`, pushed to
+  the user-created `https://github.com/simonvandekar/AIgams.git` (`main`
+  branch).
+- Converted the server copy at `/media/alsobig/AIgams/` from the earlier
+  rsync-based copy to a real `git clone` of the same repo (backed up the
+  rsync'd files, cloned fresh, restored via `git checkout main -- .`,
+  confirmed identical, removed backups). `RESI/` on the server is untouched
+  (still its own independent clone). Future instructions/log/tests/main.R
+  syncs are now just `git pull`/`git push`.
+- Updated repo memory (`server-deployment.md`) with the new git-based
+  workflow.
+
+**Next steps (pending user input):** user is switching to a VS Code
+Remote-SSH session on `biostat1561` and will bootstrap a new AI session there
+using a hand-off prompt pointing at this repo (`git pull` +
+`instructions/instructions.md` + `log/claudeLog.md`); from there, likely next
+work is running the full-scale calibration simulation and/or starting the
+`resi_pe.lmerMod`/`resi.lmerMod` CI implementation (Goal 2).
+
+---
+
 
