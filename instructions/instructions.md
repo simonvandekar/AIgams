@@ -383,6 +383,45 @@ calibration (`mean_model_se/mc_sd`, target 1), and variance-component
 relative bias (%). Visually confirms the two-tier SE-calibration pattern and
 the growing `var_schoolid_(Intercept)` bias described above.
 
+**Slope-heterogeneity diagnostic (2026-09-05):** Tested the hypothesis that
+real cross-school/child heterogeneity in covariate slopes (not modeled by
+Model A's random-intercept-only structure) explains the fixed-effect SE
+mis-calibration above. Built a synthetic version of `egsingle`
+(`tests/test_egsingle_synthetic_calibration.R`, ad hoc script, not a package
+function) where `math` is simulated from Model A's own full-data fitted
+parameters via `simulate.merMod(use.u = FALSE)` — by construction every
+school/child shares the exact same fixed slope for every covariate, only
+random intercepts vary (drawn fresh from the estimated variance components),
+and residual noise is fresh iid Gaussian. Reran the same two-stage
+hierarchical resampling + refit pipeline (`nsim=1000`, same `n_schools.vec`,
+Model A only) on this synthetic data and compared `se_ratio` to the real-data
+run:
+- **`beta_year`: largely confirmed.** `se_ratio` jumped from a flat
+  ~0.31-0.33 (real data) to ~0.72-0.78 (synthetic, zero true slope
+  heterogeneity) — most of `year`'s SE mis-calibration is explained by real
+  cross-school/child heterogeneity in the true year-slope that Model A
+  (no random slope for `year`) cannot capture, so it leaks into the fixed
+  effect's sampling variability.
+- **`beta_female`/`black`/`hispanic1`: NOT explained.** `se_ratio` stayed
+  similarly poor or got slightly worse under the synthetic (zero true slope
+  heterogeneity) DGP (e.g. `black1`: 0.67-0.77 real vs. 0.52-0.56 synthetic).
+  Since these are child-level, time-invariant covariates, this points away
+  from slope heterogeneity and toward the resampling design itself (e.g. the
+  two-stage **with-replacement** child resampling re-keys duplicate real
+  children as independent clusters).
+- **`var_schoolid_(Intercept)` growing bias for `n_schools >= 60`: NOT
+  explained.** Still grows to about -18% to -24% (vs. -28% to -35% real
+  data) even with zero true slope heterogeneity — likely the same
+  with-replacement-oversampling-beyond-the-60-school-pool mechanism
+  hypothesized earlier, not slope heterogeneity.
+- `beta_(Intercept)`/`size_100`/`lowinc_10` (school-level): similar or
+  slightly worse under the synthetic DGP, doesn't cleanly resolve to 1
+  either way — inconclusive on this diagnostic alone.
+- **Not yet done:** testing the with-replacement-resampling-artifact
+  hypothesis directly (e.g. rerun with children sampled without replacement,
+  or cap `n_schools` at 60) to see if it explains the remaining
+  child-level-covariate and `var_schoolid` mis-calibration.
+
 **5b. Validate against a trusted reference** (e.g., bootstrap RESI for
 `lmerMod`/`lme`, or the existing `geeglm` CS-RESI/L-RESI as a cross-check for
 the `lmer` case, mirroring `test-resi.R`'s `"geeglm (exchangeable, positive
