@@ -373,6 +373,16 @@ Results in `resiLongCalibrationSim/summary_table.rds` (not git-tracked, see
   deciding whether `n_schools` values above 60 (oversampling beyond the real
   school pool) should be dropped from future sweeps or are informative as-is.
 
+**Figures (2026-09-05):** Added `longitudinalCalibrationFigures()` to
+`RESI/R/simulations.R`, following `simFigures()`/`simCalibrationFigures()`'s
+base-graphics/PDF conventions (log-x `n_schools` axis, one colored line per
+term, dashed reference line at target value, legend panel). Produces one PDF
+per model (`resiLongCalibrationSim/figures/longitudinal_calibration_A.pdf`,
+`..._B.pdf`), each with 3 panels: fixed-effect bias, fixed-effect SE
+calibration (`mean_model_se/mc_sd`, target 1), and variance-component
+relative bias (%). Visually confirms the two-tier SE-calibration pattern and
+the growing `var_schoolid_(Intercept)` bias described above.
+
 **5b. Validate against a trusted reference** (e.g., bootstrap RESI for
 `lmerMod`/`lme`, or the existing `geeglm` CS-RESI/L-RESI as a cross-check for
 the `lmer` case, mirroring `test-resi.R`'s `"geeglm (exchangeable, positive
