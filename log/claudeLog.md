@@ -320,4 +320,67 @@ work is running the full-scale calibration simulation and/or starting the
 
 ---
 
+## Session 4 — 2026-09-04/05
+
+### Model
+GitHub Copilot (Claude Sonnet 5)
+
+### Prompts
+
+**Prompt 1:** (hand-off prompt, new session on `biostat1561` via VS Code
+Remote-SSH) — read `instructions/instructions.md` and `log/claudeLog.md`,
+then run the full-scale `longitudinalCalibrationSim()` via `main.R`
+(`nsim=1000`, `n_schools.vec=c(15,30,60,90,120)`) under nohup, and inspect
+`summary_table.rds` for calibration.
+
+### Actions
+- Confirmed session state: this workspace (`/media/alsobig/AIgams`) *is* the
+  `biostat1561` server; `RESI/` is at commit `b11560a` with the same local
+  uncommitted `simulations.R`/`DESCRIPTION`/`NAMESPACE` changes from Session 3.
+- Pre-flight check: `devtools::load_all("RESI")` failed with a confusing
+  `path[1]="RESI": No such file or directory` error when the persistent
+  terminal's cwd was left inside `RESI/` from a prior command. Fixed `main.R`
+  to use an absolute path (`devtools::load_all("/media/alsobig/AIgams/RESI")`)
+  so the script isn't sensitive to invocation cwd.
+- Launched `nohup Rscript main.R > run_full.log 2>&1 &` in the background.
+  Completed cleanly: 1000/1000 successful fits in all 10 (model x
+  `n_schools`) cells, 0 failures, `resiLongCalibrationSim/summary_table.rds`
+  written.
+- Analyzed the summary table (see `instructions.md` Goal 5a "Full-scale run
+  results" for full numbers). Headline finding: **fixed-effect SE calibration
+  is not uniform** — school-level covariates (`size_100`, `lowinc_10`) and the
+  intercept converge to `mean_model_se/mc_sd ≈ 1` by `n_schools=60`, but
+  child-level covariates (`female`, `black`, `hispanic`) plateau around
+  **0.7** and the occasion-level `year` plateaus around **0.3-0.4** — in
+  *both* Model A and Model B — and this does **not** improve as `n_schools`
+  (and proportionally `n_children`, up to 3440) grows. Also found
+  `var_schoolid_(Intercept)` (between-school variance) has *growing* relative
+  bias (-1% at `n_schools=15` out to -28% to -35% at `n_schools=60-120`, i.e.
+  once `n_schools` approaches/exceeds the real 60-school pool). Proposed
+  (unconfirmed) hypothesis: with-replacement child resampling within school
+  produces a persistent ~constant fraction of exact-duplicate "children"
+  re-keyed as independent clusters, inflating `lme4`'s apparent independent-
+  cluster count and understating SEs for level-1/level-2 fixed effects; an
+  analogous oversampling-beyond-pool-size effect for `n_schools > 60` for the
+  school-level variance component. Neither hypothesis has been tested yet
+  (would need e.g. a without-replacement or child-level-only bootstrap
+  comparison run).
+- Updated `instructions/instructions.md` Goal 5a with the full results write-up
+  and flagged the direct relevance to the still-open Goal 2 "effective n for
+  L-RESI" design question (evidence that the correct scaling unit likely
+  differs by which level a covariate varies at, rather than one global `n`).
+- Did not yet investigate the duplication hypothesis further or start Goal 2 —
+  reporting results back to the user first, since the SE-calibration finding
+  changes what "5a passed, move to 5b/Goal 2" would mean.
+
+**Next steps (pending user input):** decide whether to (a) run a follow-up
+experiment to confirm/refute the with-replacement-duplication hypothesis for
+both the fixed-effect SE underestimation and the growing `var_schoolid` bias
+(e.g. resample children without replacement, or cap `n_schools` at 60), before
+trusting this pipeline as a base for Goal 5b, or (b) proceed to Goal 5b/Goal 2
+(`resi_pe.lmerMod`/`resi.lmerMod` CI implementation) treating this as a known,
+documented limitation of the plasmode design rather than a blocker.
+
+---
+
 

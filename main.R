@@ -10,7 +10,7 @@
 # RStudio/VS Code with the project root as the working directory.
 # ------------------------------------------------------------------
 
-devtools::load_all("RESI")
+devtools::load_all("/media/alsobig/AIgams/RESI")
 
 # --- Quick smoke test (~10-30s): confirms the pipeline runs end to end ---
 # out <- longitudinalCalibrationSim(

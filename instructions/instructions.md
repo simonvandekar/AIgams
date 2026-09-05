@@ -310,6 +310,69 @@ without a random slope for `year`):**
   the Monte-Carlo-SD-vs-model-SE calibration ratio. Variance-component point
   estimates are still tracked (bias vs. full-data truth).
 
+**Full-scale run results (2026-09-05):** Ran `main.R` on the server
+(`nsim = 1000`, `n_schools.vec = c(15, 30, 60, 90, 120)`, `model = "both"`,
+`mc.cores.reps = 24`) — completed with 1000/1000 successful fits in every one
+of the 10 (model x `n_schools`) cells (0 `lme4` convergence failures anywhere).
+Results in `resiLongCalibrationSim/summary_table.rds` (not git-tracked, see
+`.gitignore`). Key findings:
+- **Fixed-effect bias:** shrinks toward 0 with `n_schools` for every
+  coefficient in both models, as expected (MC mean converges to the full-data
+  truth).
+- **Fixed-effect SE calibration is a two-tier pattern, not uniform
+  convergence to 1:**
+  - School-level covariates (`size_100`, `lowinc_10`) and the intercept:
+    `mean_model_se / mc_sd` converges nicely to ~1.0 by `n_schools = 60` (e.g.
+    `lowinc_10`: 0.85 -> 0.94 -> 1.01 -> 0.99 -> 1.01 for
+    `n_schools = 15,30,60,90,120`).
+  - Child-level, time-invariant covariates (`female`, `black`, `hispanic`) and
+    the occasion-level covariate `year`: the ratio stays essentially **flat**
+    across the whole `n_schools` range and never approaches 1 — `female`/
+    `black`/`hispanic` plateau around **0.7** and `year` plateaus around
+    **0.3-0.4**, in *both* Model A (no random slope) and Model B (random slope
+    for `year`), even though `n_children` grows 8x (432 -> 3440) over the same
+    range. Model-based SEs for these coefficients are substantially
+    underestimated relative to the true (plasmode) resampling variability, and
+    this does **not** resolve with more data.
+  - Working hypothesis (not yet confirmed): the two-stage resampling draws
+    children **with replacement** within each drawn school. Because the
+    number of children drawn per school equals that school's original size,
+    the expected fraction of *distinct* real children per replicate is a
+    roughly constant ~63% regardless of `n_schools` (birthday-paradox-style),
+    so a persistent fraction of "children" in every replicate are exact
+    byte-for-byte duplicates of another child in the same replicate, re-keyed
+    to a new `childid` and fit as if independent. This likely inflates the
+    apparent number of independent level-2/level-1 clusters `lme4` sees,
+    understating the fixed-effect SE for any covariate whose value is
+    determined at the child level (or below) — but not for school-level
+    covariates, since whole schools (with their real, once-realized random
+    intercept) are the resampling unit there and duplicating a whole school is
+    a textbook-valid cluster bootstrap draw. **Not yet verified** — would need
+    a follow-up experiment (e.g. resample children *without* replacement, or
+    compare against a child-level-only bootstrap) to confirm before relying on
+    this for Goal 2's effective-`n` question.
+- **Variance components:** `var_Residual`, `var_childid(:schoolid)_(Intercept)`,
+  `var_childid_year`, and the `(Intercept)`/`year` covariance are all well
+  calibrated (relative bias magnitude <=~5% at `n_schools=120`, generally
+  shrinking or flat-small). **`var_schoolid_(Intercept)` (the between-school
+  variance) is the exception: relative bias *grows* from about -1% to -2% at
+  `n_schools=15,30` (where `n_schools <= 60`, the real number of schools) out
+  to **-28% to -35%** at `n_schools = 60, 90, 120` — i.e. the MC mean
+  increasingly *overestimates* the full-data between-school variance once
+  `n_schools` approaches/exceeds the real pool of 60 schools. Likely related
+  to the same with-replacement-oversampling-beyond-the-population-size
+  mechanism above, but also not yet confirmed.
+- **Practical implication:** this is directly relevant to the open Goal 2
+  design question about the effective sample size `n` for L-RESI ("the unit
+  really depends on study design... code should try to figure it out"/report
+  it) — these results are early empirical evidence that a single "number of
+  schools" (or "number of children") scaling won't correctly calibrate SEs for
+  *all* fixed effects simultaneously in a 3-level design; the correct unit
+  plausibly differs by which level a covariate varies at.
+- **Not yet done:** confirming the with-replacement-duplication hypothesis;
+  deciding whether `n_schools` values above 60 (oversampling beyond the real
+  school pool) should be dropped from future sweeps or are informative as-is.
+
 **5b. Validate against a trusted reference** (e.g., bootstrap RESI for
 `lmerMod`/`lme`, or the existing `geeglm` CS-RESI/L-RESI as a cross-check for
 the `lmer` case, mirroring `test-resi.R`'s `"geeglm (exchangeable, positive
