@@ -422,6 +422,16 @@ run:
   or cap `n_schools` at 60) to see if it explains the remaining
   child-level-covariate and `var_schoolid` mis-calibration.
 
+**Consolidated report (2026-09-10):** All of the above (dataset description,
+including the 60-schools/1721-children/28.7-mean-children-per-school table,
+full simulation settings, full-scale results, and the synthetic
+slope-heterogeneity diagnostic) are consolidated in one Rmarkdown report,
+`resiLongCalibrationSim/calibration_report.Rmd`, compiled to
+`resiLongCalibrationSim/calibration_report.html` (self-contained, embeds the
+PDF figures as PNGs). Regenerate with
+`rmarkdown::render("resiLongCalibrationSim/calibration_report.Rmd")` after
+rerunning any of the underlying simulations.
+
 **5b. Validate against a trusted reference** (e.g., bootstrap RESI for
 `lmerMod`/`lme`, or the existing `geeglm` CS-RESI/L-RESI as a cross-check for
 the `lmer` case, mirroring `test-resi.R`'s `"geeglm (exchangeable, positive
