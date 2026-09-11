@@ -22,6 +22,7 @@ egsingle <- local({
 
 real_summary  <- readRDS("summary_table.rds")
 synth_summary <- readRDS("../tests/synthetic_calibration_summary.rds")
+fixedn_summary <- readRDS("../tests/synthetic_fixed_n_summary.rds")
 ```
 
 # Purpose
@@ -287,17 +288,104 @@ knitr::include_graphics("synthetic_diagnostic/figures/longitudinal_calibration_A
   slightly worse under the synthetic DGP; inconclusive on this diagnostic
   alone.
 
+# Sample-size (`n_schools` vs. `n_per_site`) diagnostic
+
+## Motivation and method
+
+The slope-heterogeneity diagnostic above left two findings unexplained: the
+child-level covariates' `se_ratio` plateau, and the growing
+`var_schoolid_(Intercept)` bias. Both were suspected to be artifacts of the
+**with-replacement** resampling itself, but the original design confounds
+two things: the number of sites drawn (`n_schools`) and the number of
+subjects drawn per site (inherited from each drawn school's *own* real
+size). To separate them, a new resampling helper,
+`.longSimResampleFixedN()`, draws a **fixed** `n_per_site` subjects (with
+replacement) from each drawn school, independent of that school's real
+size. The same synthetic (zero true slope heterogeneity) DGP and Model A
+were rerun (`tests/test_egsingle_synthetic_fixed_n.R`, `nsim = 1000`) over
+the full factorial grid `n_schools in {15, 30, 60} x n_per_site in {25, 50,
+100, 200}` (12 cells).
+
+## Results
+
+```{r fixedn-se-table}
+fe <- fixedn_summary[grepl("^beta_", fixedn_summary$param), ]
+wide <- reshape(fe[, c("param", "n_schools", "n_per_site", "se_ratio")],
+                 idvar = c("param", "n_schools"), timevar = "n_per_site", direction = "wide")
+wide <- wide[order(wide$param, wide$n_schools), ]
+kable(wide, digits = 3, row.names = FALSE,
+      caption = "mean_model_se / mc_sd by fixed effect, n_schools, and n_per_site (synthetic DGP, Model A)")
+```
+
+```{r fixedn-vc-table}
+vc <- fixedn_summary[!grepl("^beta_", fixedn_summary$param), ]
+vc$rel_bias_pct <- 100 * vc$bias / vc$truth
+widevc <- reshape(vc[, c("param", "n_schools", "n_per_site", "rel_bias_pct")],
+                    idvar = c("param", "n_schools"), timevar = "n_per_site", direction = "wide")
+widevc <- widevc[order(widevc$param, widevc$n_schools), ]
+kable(widevc, digits = 2, row.names = FALSE,
+      caption = "Variance-component relative bias (%) by n_schools and n_per_site (synthetic DGP, Model A)")
+```
+
+```{r fig-fixedn, fig.cap="Top row: fixed-effect SE calibration vs. n_per_site, one panel per n_schools. Bottom row: variance-component relative bias vs. n_schools, one line per n_per_site."}
+knitr::include_graphics("synthetic_diagnostic/figures/longitudinal_calibration_fixedN.png")
+```
+
+## Interpretation
+
+- **Child/occasion-level fixed effects (`year`, `female`, `black`,
+  `hispanic1`): `se_ratio` depends almost entirely on `n_per_site`, not
+  `n_schools`.** At a fixed `n_per_site`, `se_ratio` is essentially flat
+  across `n_schools`; as `n_per_site` grows from 25 to 200, `se_ratio` drops
+  sharply (e.g. `year`: ~0.75 to ~0.37). Real schools have only ~5-89
+  children, so drawing `n_per_site = 200` with replacement heavily
+  duplicates the same underlying children (identical row blocks re-keyed as
+  "new" ids) -- this **confirms the with-replacement child-resampling
+  artifact**, not slope heterogeneity or the number of sites, as the primary
+  driver for these terms.
+- **School-level fixed effects** (`(Intercept)`, `size_100`, `lowinc_10`):
+  milder, roughly stable `se_ratio` (~0.75-0.95) across the whole grid.
+- **`var_schoolid_(Intercept)`: bias depends almost entirely on `n_schools`,
+  not `n_per_site`.** Roughly flat across `n_per_site` at a given
+  `n_schools`, but growing substantially more negative as `n_schools`
+  increases (15: ~0% to -8%; 30: -10% to -17%; 60: -18% to -23%) -- the same
+  duplication mechanism, operating at the school level as `n_schools`
+  approaches/reaches the real 60-school pool.
+- `var_childid:schoolid_(Intercept)` and `var_Residual` are only mildly
+  affected (a few percent, no clear trend) by either axis.
+- **Why this happens even though the fitted model matches the data-
+  generating model:** this is not a model-misspecification problem. The
+  synthetic outcome is generated *once* from Model A's own fitted
+  parameters, producing one fixed, finite pseudo-population (60 schools,
+  1721 children with specific realized random intercepts and residuals).
+  Every simulation replicate then **bootstraps that same fixed dataset**
+  (cluster resampling with replacement) rather than drawing an
+  independent fresh sample from the underlying infinite super-population.
+  `lmer`'s reported (model-based/asymptotic) SE assumes each fitted cluster
+  contributes new independent information; but once the requested
+  resampled size (per site, or number of sites) approaches or exceeds the
+  real number of distinct units available at that level, a growing fraction
+  of "clusters" in any given replicate are just exact duplicates of already-
+  drawn units. Duplicates add no new information, so the true
+  replicate-to-replicate variability of the estimator (`mc_sd`) is larger
+  than what `vcov()` reports for any single fit -- i.e. `se_ratio < 1` is an
+  expected consequence of bootstrapping a finite pool past its size, not a
+  bug in the model-fitting.
+
 # Open questions / next steps
 
-- Test the with-replacement-resampling-artifact hypothesis directly (e.g.
-  rerun with children sampled *without* replacement, or cap `n_schools` at
-  60) to see whether it explains the remaining child-level-covariate and
-  `var_schoolid` mis-calibration.
+- The with-replacement-resampling-artifact hypothesis is now **confirmed**
+  for both the child-level fixed-effect `se_ratio` plateau (driven by
+  `n_per_site`) and the growing `var_schoolid` bias (driven by `n_schools`).
+  Not yet done: proposing/validating an actual fix for
+  `longitudinalCalibrationSim()` (e.g. without-replacement resampling capped
+  at the real pool sizes, or a finite-population correction).
 - These findings are directly relevant to the open Goal 2 design question
   about the effective sample size `n` for L-RESI: a single "number of
   schools" (or "number of children") scaling will not correctly calibrate
   SEs for *all* fixed effects simultaneously in this 3-level design; the
-  correct unit plausibly differs by which level a covariate varies at.
-- Decide whether `n_schools` values above 60 (oversampling beyond the real
-  school pool) should be dropped from future sweeps or are informative
-  as-is.
+  correct unit plausibly differs by which level a covariate varies at, and
+  is fundamentally capped by the real finite pool size at that level.
+- Decide whether `n_schools`/`n_per_site` values that oversample beyond the
+  real pool (60 schools; ~5-89 children per school) should be dropped from
+  future sweeps or are informative as-is.
