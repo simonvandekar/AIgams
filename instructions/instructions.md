@@ -432,6 +432,51 @@ PDF figures as PNGs). Regenerate with
 `rmarkdown::render("resiLongCalibrationSim/calibration_report.Rmd")` after
 rerunning any of the underlying simulations.
 
+**`n_schools` vs. `n_per_site` diagnostic (2026-09-11):** Tested whether the
+remaining mis-calibration (child-level fixed effects, `var_schoolid`) is
+driven by the *number* of sites or the *sample size at each site*, by
+decoupling the two. Added `.longSimResampleFixedN()` to
+`RESI/R/simulations.R` — same two-stage with-replacement design as
+`.longSimResampleHierarchical()`, but children per school are drawn as a
+fixed `n_per_site` rather than inherited from the drawn school's real size.
+Reran the same synthetic-DGP pipeline
+(`tests/test_egsingle_synthetic_fixed_n.R`, Model A, `nsim=1000`) over the
+full factorial grid `n_schools in {15,30,60} x n_per_site in
+{25,50,100,200}` (results: `tests/synthetic_fixed_n_summary.rds`):
+- **Child/occasion-level fixed effects (`year`, `female`, `black`,
+  `hispanic1`): `se_ratio` depends almost entirely on `n_per_site`, not
+  `n_schools`.** At any fixed `n_per_site`, `se_ratio` is essentially flat
+  across `n_schools=15/30/60`; as `n_per_site` grows from 25 to 200,
+  `se_ratio` drops sharply (e.g. `year`: ~0.75 to ~0.37; `black1`: ~0.60 to
+  ~0.24). Since real schools have only ~5-89 children, drawing
+  `n_per_site=200` with replacement heavily duplicates the same underlying
+  children (identical row blocks re-keyed as "new" ids) — this confirms the
+  with-replacement child-resampling artifact hypothesized in the prior
+  session as the primary driver, not slope heterogeneity or the number of
+  sites.
+- **School-level fixed effects (`(Intercept)`, `size_100`, `lowinc_10`):**
+  much milder, roughly stable `se_ratio` (~0.75-0.95) across the whole grid —
+  mildly miscalibrated but not scaling with either axis the way child-level
+  covariates do.
+- **`var_schoolid_(Intercept)`: bias depends almost entirely on `n_schools`,
+  not `n_per_site`.** Roughly flat across `n_per_site` at each `n_schools`
+  level, but growing substantially more negative as `n_schools` increases
+  (15: +5% to -8%; 30: -10% to -17%; 60: -18% to -23%) — the same
+  with-replacement-duplication mechanism, but operating at the school level
+  as `n_schools` approaches/reaches the real 60-school pool size.
+- `var_childid:schoolid_(Intercept)` and `var_Residual`: only mildly affected
+  (a few percent, no clear trend) — within-child and residual variance
+  estimation is comparatively robust to this resampling design.
+- **Conclusion:** the two-stage with-replacement plasmode design produces
+  real, systematic SE mis-calibration once the resampled size at a given
+  nesting level (site count or per-site count) approaches/exceeds the real
+  finite pool of distinct units available at that level. This is a property
+  of the resampling design itself, not a property of `lmer`/Model
+  A's ability to estimate SEs correctly on genuinely-sized independent data.
+- **Not yet done:** proposing/validating a fix (e.g. without-replacement
+  resampling capped at the real pool sizes, or a finite-population
+  correction) for `longitudinalCalibrationSim()`.
+
 **5b. Validate against a trusted reference** (e.g., bootstrap RESI for
 `lmerMod`/`lme`, or the existing `geeglm` CS-RESI/L-RESI as a cross-check for
 the `lmer` case, mirroring `test-resi.R`'s `"geeglm (exchangeable, positive

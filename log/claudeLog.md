@@ -383,4 +383,77 @@ documented limitation of the plasmode design rather than a blocker.
 
 ---
 
+## Session: n_schools vs. n_per_site diagnostic (2026-09-11)
+
+**User prompts:**
+1. "There appears to be bias in the synthetic simulation results. Can you show
+   the formula you are using for the mean_model_se and the mc_sd?"
+2. "Could it be related to the sample sizes at each site? Can you vary the
+   number of sites and the sample size at each site. Sample sites with
+   replacement, then sample subjects with replacement. Vary the number of
+   sites in c(15, 30, 60). Vary the sample size at each site in c(25, 50,
+   100, 200)"
+
+**Actions:**
+- Confirmed the exact formulas from `RESI/R/simulations.R`:
+  `mean_model_se_j = mean_r(sqrt(diag(vcov(fit_r))_jj))` and
+  `mc_sd_j = sd_r(theta_hat_r,j)` (sample sd, n-1 denominator), with
+  `se_ratio = mean_model_se / mc_sd`.
+- Added `.longSimResampleFixedN(school_child_index, n_schools, n_per_site,
+  school_var, child_var)` to `RESI/R/simulations.R`: same two-stage
+  with-replacement design as `.longSimResampleHierarchical()`, but the number
+  of children drawn per school is a fixed `n_per_site` argument instead of
+  being inherited from the drawn school's real size — decouples "number of
+  sites" from "sample size per site" so they can be varied independently.
+- Wrote `tests/test_egsingle_synthetic_fixed_n.R`: reuses the same synthetic
+  DGP as `test_egsingle_synthetic_calibration.R` (Model A fit on real
+  `egsingle`, then `simulate(use.u = FALSE)` to remove real cross-unit slope
+  heterogeneity by construction), and runs the full factorial grid
+  `n_schools in c(15, 30, 60) x n_per_site in c(25, 50, 100, 200)` (12
+  cells), nsim=1000, mc.cores.reps=24. Smoke-tested with nsim=5 on a reduced
+  grid first, then ran the full grid in the background
+  (`nohup ... > run_fixed_n.log`), completed cleanly. Results saved to
+  `tests/synthetic_fixed_n_summary.rds`.
+- **Headline finding: the child/occasion-level fixed-effect SE
+  mis-calibration is driven almost entirely by `n_per_site`, not
+  `n_schools`.** `se_ratio` for `year`, `female`, `black`, `hispanic1` is
+  essentially flat across `n_schools` (15/30/60) at any fixed `n_per_site`,
+  but drops sharply as `n_per_site` grows (e.g. `year`: ~0.75 at
+  `n_per_site=25` down to ~0.37 at `n_per_site=200`, for every `n_schools`).
+  This strongly implicates the with-replacement child-level resampling
+  itself: real schools have only ~5-89 children, so drawing `n_per_site=200`
+  with replacement means heavy duplication of the same underlying children
+  (identical row blocks re-keyed as "new" ids), which inflates the model's
+  apparent independent-cluster count well beyond the real information
+  content, understating reported SEs relative to true sampling variability.
+- School-level fixed effects (`(Intercept)`, `size_100`, `lowinc_10`) show
+  much milder, roughly stable `se_ratio` (~0.75-0.95) across the whole grid —
+  mildly miscalibrated but not scaling with either axis the way the
+  child-level covariates do.
+- `var_schoolid_(Intercept)` bias is driven by `n_schools`, not `n_per_site`:
+  roughly flat across `n_per_site` at each `n_schools` level, but growing
+  substantially more negative as `n_schools` increases (15: +5% to -8%; 30:
+  -10% to -17%; 60: -18% to -23%) — consistent with the real 60-school pool
+  being heavily oversampled (duplicated) once `n_schools` approaches/reaches
+  60, the same with-replacement-duplication mechanism but at the school
+  level.
+- `var_childid:schoolid_(Intercept)` and `var_Residual` are only mildly
+  affected (a few percent bias, no clear trend), i.e. within-child and
+  residual variance estimation is comparatively robust to this resampling
+  design.
+- Updated `instructions/instructions.md` Goal 5a with a new subsection
+  documenting this diagnostic and its conclusion: the two-stage
+  with-replacement plasmode design creates real, systematic SE
+  mis-calibration once the resampled sample size (per site or number of
+  sites) exceeds the real finite pool of distinct units available at that
+  level, independent of the (now-refuted-as-primary-cause) slope-
+  heterogeneity hypothesis from the previous session.
+
+**Not yet done:** testing an actual fix (e.g. without-replacement resampling
+capped at the real per-site/pool sizes, or a finite-population correction) —
+this diagnostic confirms the mechanism but does not yet propose or validate a
+remedy for `longitudinalCalibrationSim()`'s SE calibration.
+
+---
+
 
