@@ -456,4 +456,66 @@ remedy for `longitudinalCalibrationSim()`'s SE calibration.
 
 ---
 
+## Session: report gaps + plasmode confirmation (2026-09-18)
+
+**User prompts:**
+1. "Where are the results? I don't see them in the html. Can you do the same
+   analysis for the synthetic simulations? I'm not understanding why the SEs
+   are wrong in the synthetic analyses because the data generating model is
+   the same as the model we are fitting"
+2. "The synthetic simulations sampling should not have this problem then.
+   Can you point me to the results of the simulations with the new sample
+   sizes and also the ones for the plasmode simulations? If they're not in
+   the calibration_report, can you add them with explanation and recompile
+   it?"
+
+**Actions:**
+- Added the `n_schools x n_per_site` synthetic-DGP diagnostic (tables +
+  a new base-graphics figure, `tests/make_fixed_n_figure.R` ->
+  `resiLongCalibrationSim/synthetic_diagnostic/figures/longitudinal_calibration_fixedN.pdf`)
+  to `calibration_report.Rmd`, since it postdated the last render.
+  Recompiled — 29 chunks, no errors.
+- Explained the conceptual question (why SEs are wrong when the DGP matches
+  the fitted model): the synthetic outcome is generated *once* into a fixed,
+  finite pseudo-population, and every replicate then bootstraps *that same
+  fixed dataset* with replacement. `lmer`'s model-based SE assumes every
+  fitted cluster contributes new independent information; once the
+  resampled size at a level approaches/exceeds the real number of distinct
+  units there, a growing fraction of "clusters" are exact duplicates, so
+  `mc_sd` (true resampling variability) exceeds `vcov()`-based SEs. This is
+  a resampling-design artifact, not a model-misspecification issue.
+- Wrote `tests/test_egsingle_plasmode_fixed_n.R`: identical grid/pipeline to
+  the synthetic version, but resamples directly from real `egsingle` (no
+  `simulate()` step), to test whether the artifact is really
+  design-driven (should reproduce on real data too) rather than an artifact
+  of the synthetic DGP. Smoke-tested, then ran the full grid in the
+  background (`nohup ... > run_plasmode_fixed_n.log`); completed cleanly.
+  Results: `tests/plasmode_fixed_n_summary.rds`.
+- **Confirmed:** real-data (plasmode) results reproduce the synthetic-DGP
+  pattern essentially exactly — `year`/`female`/`black1`/`hispanic1`
+  `se_ratio` collapses with `n_per_site` (flat across `n_schools`);
+  `var_schoolid_(Intercept)` bias grows more negative with `n_schools` (15:
+  -6% to -25%; 30: -23% to -34%; 60: -35% to -39%), with some additional
+  drift from `n_per_site` on real data (more than seen in the synthetic
+  version). This directly answers the user's "shouldn't synthetic avoid this
+  problem?" question: no, because the mechanism is the resampling design
+  applied to a fixed finite pool, which is identical for real and synthetic
+  data of the same size.
+- Added `tests/make_plasmode_fixed_n_figure.R` (figure at
+  `resiLongCalibrationSim/figures/longitudinal_calibration_fixedN_plasmode.pdf`)
+  and a new "Plasmode (real-data) confirmation" report section (tables +
+  figure + interpretation), plus updated the "Open questions" section.
+  Recompiled — 35 chunks, no errors, confirmed 7 base64-embedded images
+  (was 6).
+- Updated `instructions/instructions.md` with the plasmode-confirmation
+  summary.
+
+**Not yet done:** proposing/validating an actual fix (without-replacement
+resampling capped at real pool sizes, or a finite-population correction) for
+`longitudinalCalibrationSim()`'s SE calibration — this session only extended
+confirmation of the diagnosis from real data to synthetic data (previously
+only synthetic had been tested at the new sample sizes).
+
+---
+
 

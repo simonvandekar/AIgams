@@ -477,6 +477,23 @@ full factorial grid `n_schools in {15,30,60} x n_per_site in
   resampling capped at the real pool sizes, or a finite-population
   correction) for `longitudinalCalibrationSim()`.
 
+**Plasmode (real-data) confirmation (2026-09-18):** Reran the identical
+`n_schools x n_per_site` grid directly on real `egsingle` data (no
+`simulate()` step at all), via `tests/test_egsingle_plasmode_fixed_n.R` /
+`tests/plasmode_fixed_n_summary.rds`. Results reproduce the synthetic-DGP
+pattern essentially exactly: `year`/`female`/`black1`/`hispanic1` `se_ratio`
+collapses with `n_per_site` and is flat across `n_schools` (e.g. `year`:
+~0.33 at `n_per_site=25` to ~0.13 at `n_per_site=200`); `var_schoolid`
+relative bias grows more negative with `n_schools` (15: -6% to -25%; 30:
+-23% to -34%; 60: -35% to -39%), with some additional negative drift from
+`n_per_site` on real data. This directly confirms the mis-calibration is a
+property of the with-replacement bootstrap resampling design itself (present
+identically on real and synthetic data of the same size), not of whether the
+fitted model matches the data-generating process. Figure:
+`resiLongCalibrationSim/figures/longitudinal_calibration_fixedN_plasmode.pdf`.
+Both the synthetic and plasmode fixed-`n_per_site` diagnostics (tables +
+figures) are now included in `calibration_report.Rmd`/`.html`.
+
 **5b. Validate against a trusted reference** (e.g., bootstrap RESI for
 `lmerMod`/`lme`, or the existing `geeglm` CS-RESI/L-RESI as a cross-check for
 the `lmer` case, mirroring `test-resi.R`'s `"geeglm (exchangeable, positive
