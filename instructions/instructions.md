@@ -467,17 +467,20 @@ full factorial grid `n_schools in {15,30,60} x n_per_site in
 - `var_childid:schoolid_(Intercept)` and `var_Residual`: only mildly affected
   (a few percent, no clear trend) — within-child and residual variance
   estimation is comparatively robust to this resampling design.
-- **Conclusion:** the two-stage with-replacement plasmode design produces
-  real, systematic SE mis-calibration once the resampled size at a given
-  nesting level (site count or per-site count) approaches/exceeds the real
-  finite pool of distinct units available at that level. This is a property
-  of the resampling design itself, not a property of `lmer`/Model
-  A's ability to estimate SEs correctly on genuinely-sized independent data.
-- **Not yet done:** proposing/validating a fix (e.g. without-replacement
-  resampling capped at the real pool sizes, or a finite-population
-  correction) for `longitudinalCalibrationSim()`.
+- **Interpretation correction:** the synthetic outcome is generated once,
+  after which the replicate loop performs a two-stage cluster bootstrap of
+  that realized synthetic dataset. The fixed sample size itself is not an
+  error; a model can generate data at any fixed sample size, with covariates
+  held fixed. These results show shared behavior of the conditional
+  resampling procedure, but do not establish that sample size or duplicate
+  clusters are the causal source of the SE discrepancy.
+- **Next discriminating experiment:** generate a fresh outcome, including
+  fresh random effects and errors, from the fitted DGP on every replicate,
+  holding the design and requested sample sizes fixed. Compare that
+  fresh-DGP distribution with the current cluster-bootstrap distribution
+  before proposing a correction to `longitudinalCalibrationSim()`.
 
-**Plasmode (real-data) confirmation (2026-09-18):** Reran the identical
+**Plasmode (real-data) comparison (2026-09-18):** Reran the identical
 `n_schools x n_per_site` grid directly on real `egsingle` data (no
 `simulate()` step at all), via `tests/test_egsingle_plasmode_fixed_n.R` /
 `tests/plasmode_fixed_n_summary.rds`. Results reproduce the synthetic-DGP
@@ -486,10 +489,11 @@ collapses with `n_per_site` and is flat across `n_schools` (e.g. `year`:
 ~0.33 at `n_per_site=25` to ~0.13 at `n_per_site=200`); `var_schoolid`
 relative bias grows more negative with `n_schools` (15: -6% to -25%; 30:
 -23% to -34%; 60: -35% to -39%), with some additional negative drift from
-`n_per_site` on real data. This directly confirms the mis-calibration is a
-property of the with-replacement bootstrap resampling design itself (present
-identically on real and synthetic data of the same size), not of whether the
-fitted model matches the data-generating process. Figure:
+`n_per_site` on real data. The matching patterns show that the real and
+synthetic analyses share the same with-replacement cluster-bootstrap step;
+they do not prove that fixed sample size is the cause or that the fitted
+model is wrong. A fresh-outcome-per-replicate simulation is needed to isolate
+model-based sampling variability. Figure:
 `resiLongCalibrationSim/figures/longitudinal_calibration_fixedN_plasmode.pdf`.
 Both the synthetic and plasmode fixed-`n_per_site` diagnostics (tables +
 figures) are now included in `calibration_report.Rmd`/`.html`.

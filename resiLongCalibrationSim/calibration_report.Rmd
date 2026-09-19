@@ -354,24 +354,20 @@ knitr::include_graphics("synthetic_diagnostic/figures/longitudinal_calibration_f
   approaches/reaches the real 60-school pool.
 - `var_childid:schoolid_(Intercept)` and `var_Residual` are only mildly
   affected (a few percent, no clear trend) by either axis.
-- **Why this happens even though the fitted model matches the data-
-  generating model:** this is not a model-misspecification problem. The
-  synthetic outcome is generated *once* from Model A's own fitted
-  parameters, producing one fixed, finite pseudo-population (60 schools,
-  1721 children with specific realized random intercepts and residuals).
-  Every simulation replicate then **bootstraps that same fixed dataset**
-  (cluster resampling with replacement) rather than drawing an
-  independent fresh sample from the underlying infinite super-population.
-  `lmer`'s reported (model-based/asymptotic) SE assumes each fitted cluster
-  contributes new independent information; but once the requested
-  resampled size (per site, or number of sites) approaches or exceeds the
-  real number of distinct units available at that level, a growing fraction
-  of "clusters" in any given replicate are just exact duplicates of already-
-  drawn units. Duplicates add no new information, so the true
-  replicate-to-replicate variability of the estimator (`mc_sd`) is larger
-  than what `vcov()` reports for any single fit -- i.e. `se_ratio < 1` is an
-  expected consequence of bootstrapping a finite pool past its size, not a
-  bug in the model-fitting.
+- **Important distinction:** the synthetic outcome is generated *once* from
+  Model A's fitted parameters, and then the current replicate loop performs a
+  two-stage cluster bootstrap of that realized synthetic dataset. Thus the
+  synthetic run is not a fresh model-based simulation on every replicate,
+  although its resampling step is a cluster bootstrap. The fact that the
+  realized dataset has a particular sample size is not, by itself, an error:
+  the model can generate data at any fixed sample size, and the covariate
+  values may be held fixed. The question that remains is whether the
+  conditional cluster-bootstrap distribution used here is the intended
+  reference distribution for the reported model-based SE. A decisive check
+  would generate a fresh outcome, including fresh random effects and errors,
+  from the fitted DGP for every replicate, while holding the design and
+  sample sizes fixed. The current results do not establish that sample size
+  itself causes the SE discrepancy.
 
 # Plasmode (real-data) confirmation at the new sample sizes
 
@@ -417,8 +413,9 @@ knitr::include_graphics("figures/longitudinal_calibration_fixedN_plasmode.png")
 ## Interpretation
 
 The real-data (plasmode) results **reproduce the synthetic-DGP pattern
-essentially exactly**, confirming the mechanism is about the resampling
-design, not the data-generating process:
+essentially exactly**. This shows that both pipelines share the same
+resampling behavior; it does not by itself prove that the behavior is caused
+by sample size or by duplicate clusters:
 
 - `year`, `female`, `black1`, `hispanic1`: `se_ratio` again collapses sharply
   with `n_per_site` (e.g. `year`: ~0.33 at `n_per_site=25` down to ~0.13 at
@@ -435,26 +432,21 @@ design, not the data-generating process:
   (a few percent) across the whole grid, as before.
 
 This directly answers the "shouldn't the synthetic simulations avoid this
-problem?" question: they don't, and neither does the real (plasmode) data --
-both exhibit the *same* mis-calibration at the *same* `n_schools`/`n_per_site`
-settings, because in both cases every replicate is a with-replacement
-cluster bootstrap of one fixed, finite dataset (60 schools; 1721 children
-real, or a fixed synthetic realization of the same size). The synthetic
-version was only ever meant to remove *slope heterogeneity* as a competing
-explanation (Section above) -- it was never expected to remove the
-resampling-design artifact, since it uses the identical resampling code on a
-population of the identical finite size.
+problem?" question: the current synthetic implementation does not, because
+it generates the synthetic outcome once and then applies the same
+with-replacement cluster-bootstrap step as the plasmode run. The matching
+patterns therefore identify a shared resampling procedure, not a causal role
+for the fixed sample size. A fresh-outcome-per-replicate simulation is still
+needed to separate model-based sampling variability from the conditional
+bootstrap variability measured here.
 
 # Open questions / next steps
 
-- The with-replacement-resampling-artifact hypothesis is now **confirmed on
-  both synthetic and real (plasmode) data** for both the child-level
-  fixed-effect `se_ratio` plateau (driven by `n_per_site`) and the growing
-  `var_schoolid` bias (driven by `n_schools`, with some `n_per_site`
-  contribution on real data). Not yet done: proposing/validating an actual
-  fix for `longitudinalCalibrationSim()` (e.g. without-replacement
-  resampling capped at the real pool sizes, or a finite-population
-  correction).
+- The `n_schools`/`n_per_site` experiment shows that the synthetic and
+  plasmode pipelines have the same conditional resampling behavior. It does
+  **not** establish that fixed sample size is the cause, nor that the model
+  is wrong. The next discriminating experiment is fresh DGP generation on
+  every replicate, with the requested design held fixed.
 - These findings are directly relevant to the open Goal 2 design question
   about the effective sample size `n` for L-RESI: a single "number of
   schools" (or "number of children") scaling will not correctly calibrate

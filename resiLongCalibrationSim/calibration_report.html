@@ -10,7 +10,7 @@
 
 
 
-<meta name="date" content="2026-09-18" />
+<meta name="date" content="2026-09-19" />
 
 <title>Longitudinal Mixed-Model Calibration Simulation (Goal 5a)</title>
 
@@ -1498,7 +1498,7 @@ div.tocify {
 
 <h1 class="title toc-ignore">Longitudinal Mixed-Model Calibration Simulation (Goal 5a)</h1>
 <h3 class="subtitle"><code>mlmRev::egsingle</code> two-stage hierarchical plasmode resampling</h3>
-<h4 class="date">2026-09-18</h4>
+<h4 class="date">2026-09-19</h4>
 
 </div>
 
@@ -2551,7 +2551,7 @@ Top row: fixed-effect SE calibration vs. n_per_site, one panel per n_schools. B
 <li><strong>School-level fixed effects</strong> (<code>(Intercept)</code>, <code>size_100</code>, <code>lowinc_10</code>): milder, roughly stable <code>se_ratio</code> (~0.75-0.95) across the whole grid.</li>
 <li><strong><code>var_schoolid_(Intercept)</code>: bias depends almost entirely on <code>n_schools</code>, not <code>n_per_site</code>.</strong> Roughly flat across <code>n_per_site</code> at a given <code>n_schools</code>, but growing substantially more negative as <code>n_schools</code> increases (15: ~0% to -8%; 30: -10% to -17%; 60: -18% to -23%) – the same duplication mechanism, operating at the school level as <code>n_schools</code> approaches/reaches the real 60-school pool.</li>
 <li><code>var_childid:schoolid_(Intercept)</code> and <code>var_Residual</code> are only mildly affected (a few percent, no clear trend) by either axis.</li>
-<li><strong>Why this happens even though the fitted model matches the data- generating model:</strong> this is not a model-misspecification problem. The synthetic outcome is generated <em>once</em> from Model A’s own fitted parameters, producing one fixed, finite pseudo-population (60 schools, 1721 children with specific realized random intercepts and residuals). Every simulation replicate then <strong>bootstraps that same fixed dataset</strong> (cluster resampling with replacement) rather than drawing an independent fresh sample from the underlying infinite super-population. <code>lmer</code>’s reported (model-based/asymptotic) SE assumes each fitted cluster contributes new independent information; but once the requested resampled size (per site, or number of sites) approaches or exceeds the real number of distinct units available at that level, a growing fraction of “clusters” in any given replicate are just exact duplicates of already- drawn units. Duplicates add no new information, so the true replicate-to-replicate variability of the estimator (<code>mc_sd</code>) is larger than what <code>vcov()</code> reports for any single fit – i.e. <code>se_ratio &lt; 1</code> is an expected consequence of bootstrapping a finite pool past its size, not a bug in the model-fitting.</li>
+<li><strong>Important distinction:</strong> the synthetic outcome is generated <em>once</em> from Model A’s fitted parameters, and then the current replicate loop performs a two-stage cluster bootstrap of that realized synthetic dataset. Thus the synthetic run is not a fresh model-based simulation on every replicate, although its resampling step is a cluster bootstrap. The fact that the realized dataset has a particular sample size is not, by itself, an error: the model can generate data at any fixed sample size, and the covariate values may be held fixed. The question that remains is whether the conditional cluster-bootstrap distribution used here is the intended reference distribution for the reported model-based SE. A decisive check would generate a fresh outcome, including fresh random effects and errors, from the fitted DGP for every replicate, while holding the design and sample sizes fixed. The current results do not establish that sample size itself causes the SE discrepancy.</li>
 </ul>
 </div>
 </div>
@@ -2850,20 +2850,20 @@ Real (plasmode) data, Model A: top row fixed-effect SE calibration vs. n_per_si
 </div>
 <div id="interpretation-2" class="section level2" number="7.3">
 <h2 number="7.3"><span class="header-section-number">7.3</span> Interpretation</h2>
-<p>The real-data (plasmode) results <strong>reproduce the synthetic-DGP pattern essentially exactly</strong>, confirming the mechanism is about the resampling design, not the data-generating process:</p>
+<p>The real-data (plasmode) results <strong>reproduce the synthetic-DGP pattern essentially exactly</strong>. This shows that both pipelines share the same resampling behavior; it does not by itself prove that the behavior is caused by sample size or by duplicate clusters:</p>
 <ul>
 <li><code>year</code>, <code>female</code>, <code>black1</code>, <code>hispanic1</code>: <code>se_ratio</code> again collapses sharply with <code>n_per_site</code> (e.g. <code>year</code>: ~0.33 at <code>n_per_site=25</code> down to ~0.13 at <code>n_per_site=200</code>) and is essentially flat across <code>n_schools</code>.</li>
 <li>School-level fixed effects (<code>(Intercept)</code>, <code>size_100</code>, <code>lowinc_10</code>): again mild, roughly stable <code>se_ratio</code> (~0.75-0.98) across the grid, improving slightly with <code>n_schools</code>.</li>
 <li><code>var_schoolid_(Intercept)</code>: bias again grows more negative as <code>n_schools</code> increases (15: -6% to -25%; 30: -23% to -34%; 60: -35% to -39%), and here also drifts somewhat more negative with <code>n_per_site</code> at a given <code>n_schools</code> – consistent with duplication pressure building from <em>both</em> axes simultaneously once real data (with only 60 schools total) is used.</li>
 <li><code>var_childid:schoolid_(Intercept)</code> and <code>var_Residual</code>: small, stable bias (a few percent) across the whole grid, as before.</li>
 </ul>
-<p>This directly answers the “shouldn’t the synthetic simulations avoid this problem?” question: they don’t, and neither does the real (plasmode) data – both exhibit the <em>same</em> mis-calibration at the <em>same</em> <code>n_schools</code>/<code>n_per_site</code> settings, because in both cases every replicate is a with-replacement cluster bootstrap of one fixed, finite dataset (60 schools; 1721 children real, or a fixed synthetic realization of the same size). The synthetic version was only ever meant to remove <em>slope heterogeneity</em> as a competing explanation (Section above) – it was never expected to remove the resampling-design artifact, since it uses the identical resampling code on a population of the identical finite size.</p>
+<p>This directly answers the “shouldn’t the synthetic simulations avoid this problem?” question: the current synthetic implementation does not, because it generates the synthetic outcome once and then applies the same with-replacement cluster-bootstrap step as the plasmode run. The matching patterns therefore identify a shared resampling procedure, not a causal role for the fixed sample size. A fresh-outcome-per-replicate simulation is still needed to separate model-based sampling variability from the conditional bootstrap variability measured here.</p>
 </div>
 </div>
 <div id="open-questions-next-steps" class="section level1" number="8">
 <h1 number="8"><span class="header-section-number">8</span> Open questions / next steps</h1>
 <ul>
-<li>The with-replacement-resampling-artifact hypothesis is now <strong>confirmed on both synthetic and real (plasmode) data</strong> for both the child-level fixed-effect <code>se_ratio</code> plateau (driven by <code>n_per_site</code>) and the growing <code>var_schoolid</code> bias (driven by <code>n_schools</code>, with some <code>n_per_site</code> contribution on real data). Not yet done: proposing/validating an actual fix for <code>longitudinalCalibrationSim()</code> (e.g. without-replacement resampling capped at the real pool sizes, or a finite-population correction).</li>
+<li>The <code>n_schools</code>/<code>n_per_site</code> experiment shows that the synthetic and plasmode pipelines have the same conditional resampling behavior. It does <strong>not</strong> establish that fixed sample size is the cause, nor that the model is wrong. The next discriminating experiment is fresh DGP generation on every replicate, with the requested design held fixed.</li>
 <li>These findings are directly relevant to the open Goal 2 design question about the effective sample size <code>n</code> for L-RESI: a single “number of schools” (or “number of children”) scaling will not correctly calibrate SEs for <em>all</em> fixed effects simultaneously in this 3-level design; the correct unit plausibly differs by which level a covariate varies at, and is fundamentally capped by the real finite pool size at that level.</li>
 <li>Decide whether <code>n_schools</code>/<code>n_per_site</code> values that oversample beyond the real pool (60 schools; ~5-89 children per school) should be dropped from future sweeps or are informative as-is.</li>
 </ul>

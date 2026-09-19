@@ -518,4 +518,23 @@ only synthetic had been tested at the new sample sizes).
 
 ---
 
+## Session: clarify synthetic simulation interpretation (2026-09-19)
+
+**Correction:** The fixed sample size is not itself an error. The synthetic
+outcome is generated once from the fitted Model A DGP; the replicate loop then
+resamples that realized synthetic dataset with the two-stage cluster-bootstrap
+helper. Therefore the current synthetic run is a conditional cluster
+bootstrap, not a fresh model-based outcome draw on every replicate.
+
+The matching synthetic/plasmode patterns show that both pipelines share this
+resampling procedure. They do not establish that sample size causes the SE
+discrepancy, nor that the fitted model is wrong. The next discriminating test
+is to generate fresh random effects, errors, and outcomes from the fitted DGP
+on every replicate while holding the requested design and sample sizes fixed,
+then compare that distribution with the current bootstrap distribution.
+Updated `calibration_report.Rmd`/`.html` and `instructions.md` to remove the
+overstated fixed-finite-pool explanation and state this distinction clearly.
+
+---
+
 
