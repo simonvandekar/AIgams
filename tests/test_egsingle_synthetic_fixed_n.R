@@ -2,11 +2,11 @@
 # [Prompt summary: follow-up to test_egsingle_synthetic_calibration.R -- test
 #  whether the fixed-effect SE mis-calibration found there is related to
 #  per-site sample size rather than (or in addition to) the number of sites.
-#  Uses the same synthetic DGP (Model A fit on real egsingle, then
-#  simulate(use.u = FALSE) to remove real cross-school/child slope
-#  heterogeneity by construction), but resamples with .longSimResampleFixedN()
-#  so n_schools and n_per_site vary independently over a full factorial grid,
-#  instead of n_per_site being inherited from each drawn school's real size.]
+#  Uses the same synthetic DGP (Model A fit on real egsingle, with fixed
+#  effects and variance components taken from that fit). It uses a
+#  deterministic covariate design for each grid cell and draws fresh school
+#  effects, child effects, and residual errors directly from the fitted
+#  Normal distributions; no sites or subjects are resampled.]
 
 devtools::load_all("/media/alsobig/AIgams/RESI")
 
@@ -31,18 +31,46 @@ cat("=== Real-data Model A fit (used as simulation DGP) ===\n")
 print(lme4::fixef(truth_fit))
 print(lme4::VarCorr(truth_fit))
 
-# --- Simulate a new outcome from Model A's own fitted parameters (see
-# test_egsingle_synthetic_calibration.R for full rationale): use.u = FALSE
-# removes all real cross-school/child slope heterogeneity by construction. ---
-set.seed(2026)
-synthetic <- egsingle
-synthetic$math <- simulate(truth_fit, nsim = 1, use.u = FALSE)[[1]]
-
-# Known-truth params = exactly what simulate() used (not a re-fit)
+# Known-truth params are the fitted Model A population parameters.
 true_params <- RESI:::.longSimExtractParams(truth_fit)
 true_fe_se  <- RESI:::.longSimExtractFeSe(truth_fit)
 
-school_child_index <- RESI:::.longSimBuildIndex(synthetic, "schoolid", "childid")
+vc <- as.data.frame(lme4::VarCorr(truth_fit))
+school_sd <- sqrt(vc$vcov[vc$grp == "schoolid" & is.na(vc$var2)])
+child_sd  <- sqrt(vc$vcov[vc$grp == "childid:schoolid" & is.na(vc$var2)])
+resid_sd  <- sigma(truth_fit)
+
+# Fixed covariate design; only the random effects and residuals vary by replicate.
+fixed_design <- function(n_schools, n_per_site) {
+  source_schools <- levels(egsingle$schoolid)[seq_len(n_schools)]
+  out <- lapply(seq_along(source_schools), function(s) {
+    source_rows <- egsingle[egsingle$schoolid == source_schools[s], , drop = FALSE]
+    child_ids <- unique(source_rows$childid)
+    selected_children <- child_ids[((seq_len(n_per_site) - 1L) %% length(child_ids)) + 1L]
+    child_rows <- lapply(selected_children, function(child_id) {
+      source_rows[source_rows$childid == child_id, , drop = FALSE]
+    })
+    rows <- do.call(rbind, child_rows)
+    rows$schoolid <- factor(s)
+    rows$childid <- factor(rep(paste0(s, "_", seq_len(n_per_site)),
+                   vapply(child_rows, nrow, integer(1L))),
+                           levels = paste0(s, "_", seq_len(n_per_site)))
+    rows
+  })
+  out <- do.call(rbind, out)
+  out$schoolid <- factor(out$schoolid)
+  out$childid <- factor(out$childid)
+  out
+}
+
+generate_outcome <- function(design) {
+  school_effect <- rnorm(nlevels(design$schoolid), sd = school_sd)
+  child_effect <- rnorm(nlevels(design$childid), sd = child_sd)
+  fixed_part <- model.matrix(~ year + female + black + hispanic + size_100 + lowinc_10,
+                             data = design) %*% lme4::fixef(truth_fit)
+  fixed_part + school_effect[design$schoolid] + child_effect[design$childid] +
+    rnorm(nrow(design), sd = resid_sd)
+}
 
 n_schools.vec  <- c(15, 30, 60)
 n_per_site.vec <- c(25, 50, 100, 200)
@@ -50,14 +78,15 @@ grid <- expand.grid(n_schools = n_schools.vec, n_per_site = n_per_site.vec)
 nsim <- 1000L
 mc.cores.reps <- 24L
 
-message("Running synthetic-DGP fixed-n_per_site calibration check for Model A ...")
+set.seed(2026)
+message("Running fresh-DGP synthetic fixed-n_per_site calibration check for Model A ...")
 rows <- lapply(seq_len(nrow(grid)), function(g) {
   n_schools  <- grid$n_schools[g]
   n_per_site <- grid$n_per_site[g]
 
   reps_raw <- parallel::mclapply(seq_len(nsim), function(i) {
-    samp <- RESI:::.longSimResampleFixedN(school_child_index, n_schools, n_per_site,
-                                           "schoolid", "childid")
+    samp <- fixed_design(n_schools, n_per_site)
+    samp$math <- generate_outcome(samp)
     fit <- tryCatch(
       suppressWarnings(suppressMessages(
         lme4::lmer(form_A, data = samp, REML = FALSE, control = ctrl))),

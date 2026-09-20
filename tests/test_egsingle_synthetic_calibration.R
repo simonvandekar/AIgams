@@ -1,12 +1,9 @@
 # [AI-generated: Claude Sonnet 5 via GitHub Copilot, 2026-09-05]
-# [Prompt summary: test hypothesis that real cross-school slope heterogeneity
-#  (not modeled by Model A's random-intercept-only structure) is causing the
-#  fixed-effect SE mis-calibration seen in longitudinalCalibrationSim(). Build
-#  a synthetic version of egsingle where the outcome is simulated from Model
-#  A's own fitted parameters (parametric bootstrap via simulate.merMod), so
-#  every coefficient except the intercept is exactly the population value by
-#  construction, then rerun the same two-stage hierarchical resampling +
-#  refit pipeline on that synthetic data and compare se_ratio/bias.]
+# [Prompt summary: test the Model A fixed-effect SE calibration by generating
+#  a fresh outcome on every replicate from the fitted fixed effects, school and
+#  child random-intercept Normal distributions, and residual Normal
+#  distribution. The covariate design is fixed and no sites or subjects are
+#  resampled; compare se_ratio/bias after refitting Model A.]
 
 devtools::load_all("/media/alsobig/AIgams/RESI")
 
@@ -31,32 +28,48 @@ cat("=== Real-data Model A fit (used as simulation DGP) ===\n")
 print(lme4::fixef(truth_fit))
 print(lme4::VarCorr(truth_fit))
 
-# --- Simulate a new outcome from Model A's own fitted parameters:
-# use.u = FALSE draws FRESH random intercepts (school + child) from the
-# estimated variance components, and fresh iid residual noise -- so by
-# construction every covariate's slope is exactly the single population
-# value everywhere (no real cross-school/child slope heterogeneity can leak
-# in), while intercept variation is preserved (drawn from the estimated
-# between-school/child intercept variance). ---
-set.seed(2026)
-synthetic <- egsingle
-synthetic$math <- simulate(truth_fit, nsim = 1, use.u = FALSE)[[1]]
-
-# Known-truth params = exactly what simulate() used (not a re-fit)
+# Known-truth params are the fitted Model A population parameters.
 true_params <- RESI:::.longSimExtractParams(truth_fit)
 true_fe_se  <- RESI:::.longSimExtractFeSe(truth_fit)
 
-school_child_index <- RESI:::.longSimBuildIndex(synthetic, "schoolid", "childid")
+vc <- as.data.frame(lme4::VarCorr(truth_fit))
+school_sd <- sqrt(vc$vcov[vc$grp == "schoolid" & is.na(vc$var2)])
+child_sd  <- sqrt(vc$vcov[vc$grp == "childid:schoolid" & is.na(vc$var2)])
+resid_sd  <- sigma(truth_fit)
+
+# Use the observed covariate design deterministically. Each replicate draws
+# fresh school effects, child effects, and residual errors; no rows are sampled.
+fixed_design <- function(n_schools) {
+  source_schools <- levels(egsingle$schoolid)
+  out <- lapply(seq_len(n_schools), function(s) {
+    source_school <- source_schools[((s - 1L) %% length(source_schools)) + 1L]
+    rows <- egsingle[egsingle$schoolid == source_school, , drop = FALSE]
+    rows$schoolid <- factor(s)
+    rows$childid <- factor(paste0(s, "_", rows$childid))
+    rows
+  })
+  do.call(rbind, out)
+}
+
+generate_outcome <- function(design) {
+  school_effect <- rnorm(nlevels(design$schoolid), sd = school_sd)
+  child_effect <- rnorm(nlevels(design$childid), sd = child_sd)
+  fixed_part <- model.matrix(~ year + female + black + hispanic + size_100 + lowinc_10,
+                             data = design) %*% lme4::fixef(truth_fit)
+  fixed_part + school_effect[design$schoolid] + child_effect[design$childid] +
+    rnorm(nrow(design), sd = resid_sd)
+}
 
 n_schools.vec <- c(15, 30, 60, 90, 120)
 nsim <- 1000L
 mc.cores.reps <- 24L
 
-message("Running synthetic-DGP calibration check for Model A ...")
+set.seed(2026)
+message("Running fresh-DGP synthetic calibration check for Model A ...")
 rows <- lapply(n_schools.vec, function(n_schools) {
   reps_raw <- parallel::mclapply(seq_len(nsim), function(i) {
-    samp <- RESI:::.longSimResampleHierarchical(school_child_index, n_schools,
-                                                 "schoolid", "childid")
+    samp <- fixed_design(n_schools)
+    samp$math <- generate_outcome(samp)
     fit <- tryCatch(
       suppressWarnings(suppressMessages(
         lme4::lmer(form_A, data = samp, REML = FALSE, control = ctrl))),

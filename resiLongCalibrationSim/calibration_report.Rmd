@@ -236,15 +236,19 @@ covariates other than the intercept (which Model A cannot model, since it
 only has random intercepts) is being absorbed into the fixed-effect sampling
 variability, causing the SE mis-calibration above.
 
-**Test:** a synthetic version of `egsingle` was built
-(`tests/test_egsingle_synthetic_calibration.R`) in which `math` is simulated
-from Model A's own full-data fitted parameters via
-`simulate.merMod(use.u = FALSE)`. By construction, every school/child shares
-the *exact same* fixed slope for every covariate -- only random intercepts
-vary (drawn fresh from the estimated variance components), plus fresh iid
-residual noise. The same two-stage resampling + refit pipeline (`nsim =
-1000`, same `n_schools.vec`, Model A only) was then rerun on this synthetic
-data.
+**Test:** `tests/test_egsingle_synthetic_calibration.R` fits Model A once to
+the real data to obtain the fixed effects, school-intercept variance,
+child-intercept variance, and residual variance. For each of 1000 replicates
+and each requested `n_schools`, it keeps a deterministic covariate design,
+draws fresh school random intercepts from
+$N(0, \widehat{\sigma}^2_{school})$, draws fresh child random intercepts from
+$N(0, \widehat{\sigma}^2_{child})$, and draws fresh observation errors from
+$N(0, \widehat{\sigma}^2_e)$. It then constructs
+$math = X\widehat{\beta} + b_{school} + b_{child} + e$ and fits Model A.
+There is **no site or subject resampling** in this synthetic simulation.
+When `n_schools` exceeds the 60 observed site covariate patterns, the fixed
+design cycles those patterns and re-keys the generated sites; this is a
+design choice, not random resampling.
 
 ## Results
 
@@ -267,45 +271,34 @@ knitr::include_graphics("synthetic_diagnostic/figures/longitudinal_calibration_A
 
 ## Interpretation
 
-- **`beta_year`: hypothesis largely confirmed.** `se_ratio` jumped from a
-  flat ~0.31-0.33 (real data) to ~0.72-0.78 (synthetic, zero true slope
-  heterogeneity). Model A has no random slope for `year`, so real
-  cross-school/child heterogeneity in the true year-slope was leaking into
-  the `year` fixed effect's sampling variability; removing that
-  heterogeneity recovered most (not all) of the calibration.
-- **`beta_female`/`black`/`hispanic1`: not explained.** `se_ratio` stayed
-  similarly poor, or slightly worse, under the synthetic (zero true slope
-  heterogeneity) DGP. Since these are child-level, time-invariant
-  covariates, this points away from slope heterogeneity and toward the
-  resampling design itself -- most plausibly the two-stage
-  **with-replacement** child resampling, which re-keys duplicate real
-  children as independent clusters within a replicate.
-- **`var_schoolid_(Intercept)` growing bias for `n_schools >= 60`: not
-  explained.** Still grows to about -18% to -24% (vs. -28% to -35% real
-  data) even with zero true slope heterogeneity -- likely the same
-  with-replacement-oversampling-beyond-the-60-school-pool mechanism, not
-  slope heterogeneity.
-- `beta_(Intercept)`/`size_100`/`lowinc_10` (school-level): similar or
-  slightly worse under the synthetic DGP; inconclusive on this diagnostic
-  alone.
+- **Fixed-effect SE calibration is largely recovered.** Across
+  `n_schools = 15, 30, 60, 90, 120`, the corrected fresh-DGP `se_ratio` is
+  approximately 0.83-1.05 for the fixed effects, including `year`, `female`,
+  `black`, and `hispanic`; there is no persistent decline like the earlier
+  resampling-based synthetic results.
+- The remaining mild deviations from 1 are ordinary finite-Monte-Carlo and
+  finite-design effects, especially for the intercept and school-level
+  covariates at `n_schools = 15`; they are not the earlier severe
+  child/occasion-level pattern.
+- Variance-component estimates are close for the child and residual terms.
+  The school variance has positive relative bias at smaller site counts
+  (about 33% at 15 sites, 15% at 30, and 9% at 60), then stabilizes around
+  8-9% for 90 and 120 sites. This is a separate variance-component
+  estimation issue, not evidence that the fixed-effect SEs are wrong.
 
 # Sample-size (`n_schools` vs. `n_per_site`) diagnostic
 
 ## Motivation and method
 
-The slope-heterogeneity diagnostic above left two findings unexplained: the
-child-level covariates' `se_ratio` plateau, and the growing
-`var_schoolid_(Intercept)` bias. Both were suspected to be artifacts of the
-**with-replacement** resampling itself, but the original design confounds
-two things: the number of sites drawn (`n_schools`) and the number of
-subjects drawn per site (inherited from each drawn school's *own* real
-size). To separate them, a new resampling helper,
-`.longSimResampleFixedN()`, draws a **fixed** `n_per_site` subjects (with
-replacement) from each drawn school, independent of that school's real
-size. The same synthetic (zero true slope heterogeneity) DGP and Model A
-were rerun (`tests/test_egsingle_synthetic_fixed_n.R`, `nsim = 1000`) over
-the full factorial grid `n_schools in {15, 30, 60} x n_per_site in {25, 50,
-100, 200}` (12 cells).
+The corrected fixed-site-size simulation
+(`tests/test_egsingle_synthetic_fixed_n.R`) uses the same direct DGP
+generation, but constructs a deterministic covariate design with exactly
+`n_per_site` child profiles per site. For each of the 12 grid cells
+(`n_schools in {15, 30, 60} x n_per_site in {25, 50, 100, 200}`) and each of
+1000 replicates, it draws fresh school effects, fresh child effects, and
+fresh residual errors from the fitted Normal variance components, constructs
+the outcome from the fixed effects plus those draws, and fits Model A. It
+does **not** sample sites or subjects with replacement.
 
 ## Results
 
@@ -334,40 +327,25 @@ knitr::include_graphics("synthetic_diagnostic/figures/longitudinal_calibration_f
 
 ## Interpretation
 
-- **Child/occasion-level fixed effects (`year`, `female`, `black`,
-  `hispanic1`): `se_ratio` depends almost entirely on `n_per_site`, not
-  `n_schools`.** At a fixed `n_per_site`, `se_ratio` is essentially flat
-  across `n_schools`; as `n_per_site` grows from 25 to 200, `se_ratio` drops
-  sharply (e.g. `year`: ~0.75 to ~0.37). Real schools have only ~5-89
-  children, so drawing `n_per_site = 200` with replacement heavily
-  duplicates the same underlying children (identical row blocks re-keyed as
-  "new" ids) -- this **confirms the with-replacement child-resampling
-  artifact**, not slope heterogeneity or the number of sites, as the primary
-  driver for these terms.
-- **School-level fixed effects** (`(Intercept)`, `size_100`, `lowinc_10`):
-  milder, roughly stable `se_ratio` (~0.75-0.95) across the whole grid.
-- **`var_schoolid_(Intercept)`: bias depends almost entirely on `n_schools`,
-  not `n_per_site`.** Roughly flat across `n_per_site` at a given
-  `n_schools`, but growing substantially more negative as `n_schools`
-  increases (15: ~0% to -8%; 30: -10% to -17%; 60: -18% to -23%) -- the same
-  duplication mechanism, operating at the school level as `n_schools`
-  approaches/reaches the real 60-school pool.
-- `var_childid:schoolid_(Intercept)` and `var_Residual` are only mildly
-  affected (a few percent, no clear trend) by either axis.
-- **Important distinction:** the synthetic outcome is generated *once* from
-  Model A's fitted parameters, and then the current replicate loop performs a
-  two-stage cluster bootstrap of that realized synthetic dataset. Thus the
-  synthetic run is not a fresh model-based simulation on every replicate,
-  although its resampling step is a cluster bootstrap. The fact that the
-  realized dataset has a particular sample size is not, by itself, an error:
-  the model can generate data at any fixed sample size, and the covariate
-  values may be held fixed. The question that remains is whether the
-  conditional cluster-bootstrap distribution used here is the intended
-  reference distribution for the reported model-based SE. A decisive check
-  would generate a fresh outcome, including fresh random effects and errors,
-  from the fitted DGP for every replicate, while holding the design and
-  sample sizes fixed. The current results do not establish that sample size
-  itself causes the SE discrepancy.
+- **Fixed-effect SE calibration is approximately correct across the entire
+  grid.** The fresh-DGP `se_ratio` values for `year`, `female`, `black`, and
+  `hispanic` are about 0.94-1.07 across all combinations of `n_schools` and
+  `n_per_site`; the earlier collapse with increasing `n_per_site` disappears.
+- The intercept and school-level covariates are somewhat lower at 15 sites
+  (roughly 0.84-0.88) and approach 1 as the number of sites increases, which
+  is consistent with ordinary small-site behavior rather than an
+  `n_per_site`-driven collapse.
+- Child-intercept and residual variance estimates are essentially unbiased
+  across the grid. School-intercept variance has positive bias at 15 sites
+  (about 23-32%), decreasing to about 5-9% by 60 sites; this is a
+  variance-component estimation pattern, not fixed-effect SE
+  mis-calibration.
+- **Conclusion:** once each replicate draws fresh school effects, child
+  effects, and residual errors from the fitted DGP, while the covariate
+  design is held fixed and no rows are resampled, the severe synthetic
+  fixed-effect SE discrepancy disappears. The earlier synthetic results
+  were measuring a different procedure and should be replaced by these
+  direct-DGP results.
 
 # Plasmode (real-data) confirmation at the new sample sizes
 
@@ -412,10 +390,12 @@ knitr::include_graphics("figures/longitudinal_calibration_fixedN_plasmode.png")
 
 ## Interpretation
 
-The real-data (plasmode) results **reproduce the synthetic-DGP pattern
-essentially exactly**. This shows that both pipelines share the same
-resampling behavior; it does not by itself prove that the behavior is caused
-by sample size or by duplicate clusters:
+The real-data (plasmode) analysis below is a separate, bootstrap-based
+analysis of the observed outcome. It is retained as a comparison to the
+original plasmode pipeline; unlike the corrected synthetic analyses above,
+it does resample sites and subjects with replacement. Therefore its results
+should not be interpreted as a validation of the direct-DGP synthetic
+results, and differences between them are expected:
 
 - `year`, `female`, `black1`, `hispanic1`: `se_ratio` again collapses sharply
   with `n_per_site` (e.g. `year`: ~0.33 at `n_per_site=25` down to ~0.13 at
@@ -431,14 +411,12 @@ by sample size or by duplicate clusters:
 - `var_childid:schoolid_(Intercept)` and `var_Residual`: small, stable bias
   (a few percent) across the whole grid, as before.
 
-This directly answers the "shouldn't the synthetic simulations avoid this
-problem?" question: the current synthetic implementation does not, because
-it generates the synthetic outcome once and then applies the same
-with-replacement cluster-bootstrap step as the plasmode run. The matching
-patterns therefore identify a shared resampling procedure, not a causal role
-for the fixed sample size. A fresh-outcome-per-replicate simulation is still
-needed to separate model-based sampling variability from the conditional
-bootstrap variability measured here.
+The corrected synthetic analysis is the model-based reference: it holds the
+covariate design fixed and repeatedly draws the random effects and residual
+errors from the fitted Normal DGP. The plasmode analysis instead measures a
+conditional cluster-bootstrap distribution of the observed outcome. These
+are different estimands, so the plasmode SE patterns should not be used to
+argue that the direct-DGP synthetic SEs are miscalibrated.
 
 # Open questions / next steps
 

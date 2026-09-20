@@ -432,53 +432,28 @@ PDF figures as PNGs). Regenerate with
 `rmarkdown::render("resiLongCalibrationSim/calibration_report.Rmd")` after
 rerunning any of the underlying simulations.
 
-**`n_schools` vs. `n_per_site` diagnostic (2026-09-11):** Tested whether the
-remaining mis-calibration (child-level fixed effects, `var_schoolid`) is
-driven by the *number* of sites or the *sample size at each site*, by
-decoupling the two. Added `.longSimResampleFixedN()` to
-`RESI/R/simulations.R` — same two-stage with-replacement design as
-`.longSimResampleHierarchical()`, but children per school are drawn as a
-fixed `n_per_site` rather than inherited from the drawn school's real size.
-Reran the same synthetic-DGP pipeline
-(`tests/test_egsingle_synthetic_fixed_n.R`, Model A, `nsim=1000`) over the
-full factorial grid `n_schools in {15,30,60} x n_per_site in
-{25,50,100,200}` (results: `tests/synthetic_fixed_n_summary.rds`):
-- **Child/occasion-level fixed effects (`year`, `female`, `black`,
-  `hispanic1`): `se_ratio` depends almost entirely on `n_per_site`, not
-  `n_schools`.** At any fixed `n_per_site`, `se_ratio` is essentially flat
-  across `n_schools=15/30/60`; as `n_per_site` grows from 25 to 200,
-  `se_ratio` drops sharply (e.g. `year`: ~0.75 to ~0.37; `black1`: ~0.60 to
-  ~0.24). Since real schools have only ~5-89 children, drawing
-  `n_per_site=200` with replacement heavily duplicates the same underlying
-  children (identical row blocks re-keyed as "new" ids) — this confirms the
-  with-replacement child-resampling artifact hypothesized in the prior
-  session as the primary driver, not slope heterogeneity or the number of
-  sites.
-- **School-level fixed effects (`(Intercept)`, `size_100`, `lowinc_10`):**
-  much milder, roughly stable `se_ratio` (~0.75-0.95) across the whole grid —
-  mildly miscalibrated but not scaling with either axis the way child-level
-  covariates do.
-- **`var_schoolid_(Intercept)`: bias depends almost entirely on `n_schools`,
-  not `n_per_site`.** Roughly flat across `n_per_site` at each `n_schools`
-  level, but growing substantially more negative as `n_schools` increases
-  (15: +5% to -8%; 30: -10% to -17%; 60: -18% to -23%) — the same
-  with-replacement-duplication mechanism, but operating at the school level
-  as `n_schools` approaches/reaches the real 60-school pool size.
-- `var_childid:schoolid_(Intercept)` and `var_Residual`: only mildly affected
-  (a few percent, no clear trend) — within-child and residual variance
-  estimation is comparatively robust to this resampling design.
-- **Interpretation correction:** the synthetic outcome is generated once,
-  after which the replicate loop performs a two-stage cluster bootstrap of
-  that realized synthetic dataset. The fixed sample size itself is not an
-  error; a model can generate data at any fixed sample size, with covariates
-  held fixed. These results show shared behavior of the conditional
-  resampling procedure, but do not establish that sample size or duplicate
-  clusters are the causal source of the SE discrepancy.
-- **Next discriminating experiment:** generate a fresh outcome, including
-  fresh random effects and errors, from the fitted DGP on every replicate,
-  holding the design and requested sample sizes fixed. Compare that
-  fresh-DGP distribution with the current cluster-bootstrap distribution
-  before proposing a correction to `longitudinalCalibrationSim()`.
+**Synthetic direct-DGP simulations (2026-09-20):** Replaced the prior
+synthetic bootstrap analyses. `tests/test_egsingle_synthetic_calibration.R`
+fits Model A once to obtain the fixed effects and variance components. For
+every replicate it holds a deterministic covariate design fixed, draws fresh
+school random intercepts from `N(0, sigma_school^2)`, fresh child random
+intercepts from `N(0, sigma_child^2)`, and fresh observation errors from
+`N(0, sigma_error^2)`, then constructs `math = X beta + b_school +
+b_child + error` and refits Model A. It does **not** resample sites or
+subjects. The original grid uses `n_schools = c(15,30,60,90,120)` and
+`nsim=1000`; for counts above 60 it cycles fixed observed covariate patterns
+and re-keys generated sites. All 1000 fits succeeded in every cell. Fixed-
+effect `se_ratio` is approximately 0.88-1.04 across the site-count grid.
+
+`tests/test_egsingle_synthetic_fixed_n.R` uses the same direct DGP, with a
+deterministic design containing exactly `n_per_site` child profiles per site,
+over `n_schools in {15,30,60} x n_per_site in {25,50,100,200}` (12 cells,
+`nsim=1000`). It also performs no row, site, or subject resampling. All cells
+had 1000 successful fits; fixed-effect `se_ratio` is approximately 0.84-1.07
+and does not collapse as `n_per_site` increases. The corrected results are
+stored in `tests/synthetic_calibration_summary.rds` and
+`tests/synthetic_fixed_n_summary.rds`, with figures and full tables in
+`resiLongCalibrationSim/calibration_report.Rmd`/`.html`.
 
 **Plasmode (real-data) comparison (2026-09-18):** Reran the identical
 `n_schools x n_per_site` grid directly on real `egsingle` data (no
@@ -489,11 +464,9 @@ collapses with `n_per_site` and is flat across `n_schools` (e.g. `year`:
 ~0.33 at `n_per_site=25` to ~0.13 at `n_per_site=200`); `var_schoolid`
 relative bias grows more negative with `n_schools` (15: -6% to -25%; 30:
 -23% to -34%; 60: -35% to -39%), with some additional negative drift from
-`n_per_site` on real data. The matching patterns show that the real and
-synthetic analyses share the same with-replacement cluster-bootstrap step;
-they do not prove that fixed sample size is the cause or that the fitted
-model is wrong. A fresh-outcome-per-replicate simulation is needed to isolate
-model-based sampling variability. Figure:
+`n_per_site` on real data. This remains a separate conditional
+with-replacement cluster-bootstrap analysis and should not be conflated with
+the corrected direct-DGP synthetic results above. Figure:
 `resiLongCalibrationSim/figures/longitudinal_calibration_fixedN_plasmode.pdf`.
 Both the synthetic and plasmode fixed-`n_per_site` diagnostics (tables +
 figures) are now included in `calibration_report.Rmd`/`.html`.
