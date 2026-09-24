@@ -537,4 +537,56 @@ overstated fixed-finite-pool explanation and state this distinction clearly.
 
 ---
 
+## Session: hybrid plasmode simulation (2026-09-24)
+
+**User prompt:** "Can you write a hybrid plasmode simulation that uses the
+same synthetic simulation setup, but instead of sampling from a normal it
+resamples with replacement from the random effects blups (the estimated
+means). Make sure that the blups are mean zero with variance equal to the
+variance from the mixed model."
+
+**Actions:**
+- Confirmed `lme4::ranef()` group names (`schoolid`, `childid:schoolid`)
+  match `VarCorr()`'s, and that raw BLUPs are shrunk toward zero relative to
+  the fitted variance components (school: raw var 0.056 vs. fitted 0.079;
+  child: raw var 0.562 vs. fitted 0.652).
+- Wrote `tests/test_egsingle_hybrid_plasmode.R` and
+  `tests/test_egsingle_hybrid_plasmode_fixed_n.R`: identical fixed covariate
+  design and fresh-residual generation as the direct-DGP synthetic scripts,
+  but school/child random effects are drawn by `sample(pool, n, replace =
+  TRUE)` from BLUP pools that are centered to exactly mean zero and rescaled
+  so their variance equals the fitted variance component
+  (`rescale_blup()` helper: `(blup - mean(blup)) * sqrt(target_var /
+  var(centered))`). Verified rescaled pool variance matches the fitted
+  variance component exactly in a smoke test.
+- Smoke-tested both scripts (small grids, low nsim), then ran both full
+  grids (`nsim=1000`) in the background: original grid
+  (`n_schools in {15,30,60,90,120}`) completed in ~5 minutes; the
+  `n_schools x n_per_site` grid (12 cells) took about an hour due to the
+  larger per-cell sample sizes (up to 60 sites x 200 children).
+- **Result: the hybrid plasmode reproduces the direct-DGP synthetic
+  pattern, not the real-data plasmode pattern.** Fixed-effect `se_ratio` is
+  approximately 0.84-1.05 across both grids with no collapse as `n_per_site`
+  increases; `var_schoolid_(Intercept)` bias is positive and shrinks with
+  `n_schools` (about 31% at 15 sites to 5% at 120 sites), not the negative,
+  `n_schools`-growing bias seen in the real-data plasmode bootstrap.
+- Generated figures (`tests/make_hybrid_plasmode_fixed_n_figure.R` plus the
+  existing `longitudinalCalibrationFigures()` for the original grid),
+  visually confirmed both figures.
+- Added a new "Hybrid plasmode simulation (BLUP-resampled random effects)"
+  section to `calibration_report.Rmd` (method with the rescaling formula,
+  results tables/figures, interpretation), recompiled — 45 chunks, no
+  errors, confirmed 9 embedded images (was 7).
+- Updated `instructions.md` with the hybrid plasmode method and conclusion.
+
+**Interpretation:** since resampling from a *rescaled* finite BLUP pool
+behaves like drawing from the underlying Normal distribution (not like the
+real-data plasmode bootstrap), the plasmode bootstrap's SE mis-calibration
+must come specifically from resampling entire rows/clusters of the real,
+finite dataset (duplicating whole covariate-and-residual blocks), not
+merely from using a finite, resampled -- rather than continuously
+distributed -- source for the random effects.
+
+---
+
 

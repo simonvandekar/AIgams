@@ -24,6 +24,8 @@ real_summary  <- readRDS("summary_table.rds")
 synth_summary <- readRDS("../tests/synthetic_calibration_summary.rds")
 fixedn_summary <- readRDS("../tests/synthetic_fixed_n_summary.rds")
 plasmode_fixedn_summary <- readRDS("../tests/plasmode_fixed_n_summary.rds")
+hybrid_summary <- readRDS("../tests/hybrid_plasmode_summary.rds")
+hybrid_fixedn_summary <- readRDS("../tests/hybrid_plasmode_fixed_n_summary.rds")
 ```
 
 # Purpose
@@ -346,6 +348,105 @@ knitr::include_graphics("synthetic_diagnostic/figures/longitudinal_calibration_f
   fixed-effect SE discrepancy disappears. The earlier synthetic results
   were measuring a different procedure and should be replaced by these
   direct-DGP results.
+
+# Hybrid plasmode simulation (BLUP-resampled random effects)
+
+## Motivation and method
+
+The direct-DGP synthetic simulations above draw school and child random
+effects from a **Normal** distribution with variance equal to the fitted
+variance component. This section tests a middle ground between that fully
+parametric approach and the real-data plasmode bootstrap: keep the fixed
+covariate design and residual-error generation exactly as in the direct-DGP
+synthetic simulation, but generate the school and child random effects by
+**resampling with replacement from the model's BLUPs**
+(`lme4::ranef()`, the estimated random-effect means) instead of drawing
+from a Normal distribution.
+
+Raw BLUPs are shrunk toward zero relative to the true random-effect
+variance (a well-known property of best linear unbiased prediction), so
+each BLUP pool is first centered to exactly mean zero and then rescaled so
+its variance equals the corresponding fitted variance component before any
+resampling:
+$$b^*_i = (b_i - \bar b) \times \sqrt{\hat\sigma^2 / \widehat{\mathrm{Var}}(b - \bar b)}$$
+For Model A fit to the real data: the 60 school BLUPs have raw variance
+0.056 (fitted `var_schoolid` = 0.079, so rescale factor $\approx 1.19$); the
+1721 child BLUPs have raw variance 0.562 (fitted
+`var_childid:schoolid` = 0.652, rescale factor $\approx 1.08$). Each
+replicate then draws the school effect for every generated site (with
+replacement, from the rescaled 60-value school-BLUP pool) and the child
+effect for every generated child (with replacement, from the rescaled
+1721-value child-BLUP pool); residual errors are still drawn fresh from
+$N(0,\hat\sigma_e^2)$ as in the direct-DGP synthetic simulation. No rows of
+the real data are resampled -- only the (rescaled) random-effect values
+are. Both grids are rerun with this design:
+`tests/test_egsingle_hybrid_plasmode.R` (`n_schools in {15,30,60,90,120}`)
+and `tests/test_egsingle_hybrid_plasmode_fixed_n.R`
+(`n_schools in {15,30,60} x n_per_site in {25,50,100,200}`), `nsim = 1000`
+each.
+
+## Results
+
+```{r hybrid-se-table}
+fe <- hybrid_summary[grepl("^beta_", hybrid_summary$param), ]
+wide <- reshape(fe[, c("param", "n_schools", "se_ratio")],
+                 idvar = "param", timevar = "n_schools", direction = "wide")
+kable(wide, digits = 3, row.names = FALSE,
+      caption = "mean_model_se / mc_sd by fixed effect and n_schools (hybrid plasmode, Model A)")
+```
+
+```{r fig-hybrid, fig.cap="Hybrid plasmode (BLUP-resampled random effects), Model A: fixed-effect bias, SE calibration, and variance-component bias vs. n_schools."}
+knitr::include_graphics("hybrid_plasmode/figures/longitudinal_calibration_A_hybrid.png")
+```
+
+```{r hybrid-fixedn-se-table}
+fe2 <- hybrid_fixedn_summary[grepl("^beta_", hybrid_fixedn_summary$param), ]
+wide2 <- reshape(fe2[, c("param", "n_schools", "n_per_site", "se_ratio")],
+                 idvar = c("param", "n_schools"), timevar = "n_per_site", direction = "wide")
+wide2 <- wide2[order(wide2$param, wide2$n_schools), ]
+kable(wide2, digits = 3, row.names = FALSE,
+      caption = "mean_model_se / mc_sd by fixed effect, n_schools, and n_per_site (hybrid plasmode, Model A)")
+```
+
+```{r hybrid-fixedn-vc-table}
+vc3 <- hybrid_fixedn_summary[!grepl("^beta_", hybrid_fixedn_summary$param), ]
+vc3$rel_bias_pct <- 100 * vc3$bias / vc3$truth
+widevc3 <- reshape(vc3[, c("param", "n_schools", "n_per_site", "rel_bias_pct")],
+                    idvar = c("param", "n_schools"), timevar = "n_per_site", direction = "wide")
+widevc3 <- widevc3[order(widevc3$param, widevc3$n_schools), ]
+kable(widevc3, digits = 2, row.names = FALSE,
+      caption = "Variance-component relative bias (%) by n_schools and n_per_site (hybrid plasmode, Model A)")
+```
+
+```{r fig-hybrid-fixedn, fig.cap="Hybrid plasmode (BLUP-resampled random effects), Model A: top row fixed-effect SE calibration vs. n_per_site (one panel per n_schools); bottom row variance-component relative bias vs. n_schools (one line per n_per_site)."}
+knitr::include_graphics("hybrid_plasmode/figures/longitudinal_calibration_fixedN_hybrid.png")
+```
+
+## Interpretation
+
+- **Fixed-effect SE calibration matches the direct-DGP synthetic results.**
+  Across both grids, `se_ratio` is approximately 0.84-1.05 for every fixed
+  effect, with no collapse as `n_per_site` increases -- the severe
+  with-replacement-duplication artifact seen in the real-data plasmode
+  section does not appear here, even though random effects are now drawn
+  by resampling (with replacement) rather than from a Normal distribution.
+- **`var_schoolid_(Intercept)` bias also matches the direct-DGP pattern:**
+  positive and shrinking with `n_schools` (about 31% at 15 sites down to
+  about 5% at 120 sites, or 5-6% at 60 sites across all `n_per_site`
+  values), essentially flat across `n_per_site` -- not the negative,
+  growing-with-`n_schools` pattern seen in the real-data plasmode
+  bootstrap.
+- `var_childid:schoolid_(Intercept)` and `var_Residual` remain well
+  calibrated (a few tenths of a percent) across both grids.
+- **Conclusion:** resampling with replacement from a *rescaled* finite pool
+  of BLUPs behaves like drawing from the underlying Normal distribution for
+  this purpose -- it does **not** reproduce the plasmode bootstrap's
+  fixed-effect SE collapse or the sign-flipped, `n_schools`-growing
+  `var_schoolid` bias. This indicates those plasmode-specific patterns come
+  from resampling entire rows/clusters of the real, finite dataset (with
+  their attendant duplication of full covariate-and-residual blocks), not
+  merely from using a finite, resampled -- as opposed to continuously
+  distributed -- source for the random effects.
 
 # Plasmode (real-data) confirmation at the new sample sizes
 
