@@ -1,0 +1,261 @@
+---
+title: "RESI at a chosen grouping level for mixed models"
+subtitle: "Mathematical basis for the `level` argument to `resi_pe.lmerMod()`/`resi_pe.lme()`"
+author: "RESI package project notes"
+date: 2026-09-25
+format:
+  html:
+    toc: true
+    number-sections: true
+    embed-resources: true
+---
+
+## Purpose
+
+This note documents the mathematics behind the `level` argument added to
+`resi_pe.lmerMod()` (`lme4`) and `resi_pe.lme()` (`nlme`) in
+`RESI/R/resi_pe.R`. It explains:
+
+1. how the existing RESI / L-RESI / CS-RESI framework generalizes from a
+   single clustering level (GEE, one random effect) to a chosen level of a
+   multi-level nested mixed model (e.g., subject vs. site in a 3-level
+   design), and
+2. a hard mathematical constraint on which levels can be validly used with
+   a cluster-robust ("sandwich") variance estimator, discovered while
+   implementing this feature.
+
+It draws on the RESI definition in Vandekar, Tao, and Blume (2020) as
+summarized in the RESI package's JSS paper (`notes/v112i03 (3).pdf`,
+Jones, Kang, and Vandekar 2025, Section 2), and the longitudinal L-RESI/
+CS-RESI derivation in `notes/41586_2024_8260_MOESM1_ESM.pdf` (Kang et al.,
+*Nature* 2024, Supplementary Section 3). The two `.tex` files in `notes/`
+(`Manuscript_revision.tex`, `supplement.tex`) concern the asymptotic
+(non-bootstrap) confidence interval derivation and are not used here.
+
+## 1. The RESI and its estimators (single-level case)
+
+Consider independent observations $W = \{W_1, \dots, W_n\}$ with parameters
+$\theta = (\alpha, \beta)$, where $\beta \in \mathbb{R}^{m_1}$ is the target
+parameter and $\beta_0$ a reference value (usually 0). The Wald statistic
+
+$$T^2 = n(\hat\beta - \beta_0)^\top \Sigma_\beta(\hat\theta)^{-1} (\hat\beta - \beta_0)$$
+
+is asymptotically $\chi^2_{m_1}$ with noncentrality parameter
+$n(\beta - \beta_0)^\top \Sigma_\beta^{-1} (\beta - \beta_0)$. The RESI is the
+part of that noncentrality parameter that does not depend on $n$:
+
+$$S_\beta = \sqrt{(\beta - \beta_0)^\top \Sigma_\beta^{-1} (\beta - \beta_0)}, \qquad
+  S_{\beta,\text{sgn}} = \beta / \sqrt{\Sigma_\beta} \ \ (\text{univariate } \beta).$$
+
+Consistent estimators (used by `chisq2S()`/`z2S()`/`t2S()`/`f2S()` in the
+package) are, e.g.,
+
+$$\hat S_\beta = \sqrt{\max\left(0, \frac{T^2 - m_1}{n}\right)}, \qquad
+  \hat S_{\beta,\text{sgn}} = \frac{Z}{\sqrt n}.$$
+
+The RESI is "robust" because $\hat S_\beta$ remains consistent when
+$\Sigma_\beta$ is estimated with a **heteroskedasticity/cluster-robust**
+("sandwich") covariance instead of the naive model-based one. **The choice
+of $n$ and the choice of variance estimator are not independent**: $n$ must
+be the number of units that the variance estimator treats as independent
+replicates. This coupling is the source of everything below.
+
+## 2. Generalizing to clustered/longitudinal data (L-RESI, CS-RESI)
+
+For clustered data with $N$ independent participants, each with $n_i$
+repeated measurements ($n = \sum_i n_i$), the *longitudinal RESI* (L-RESI)
+keeps the same formula but with $\Sigma_\beta$ the asymptotic covariance of
+$\sqrt N (\hat\beta - \beta)$ that correctly accounts for the within-cluster
+correlation (a GEE/cluster-robust sandwich, $\Sigma_\beta = A^{-1} B A^{-1}$
+with $A, B$ defined from the estimating equations):
+
+$$S = \sqrt{(\beta - \beta_0)^\top \Sigma_\beta^{-1} (\beta - \beta_0)}, \qquad
+  \hat S = \sqrt{\max\left(0, \frac{T^2 - p_1}{N}\right)}.$$
+
+The *cross-sectional RESI* (CS-RESI) asks a different question: "what would
+the standardized effect size be if this had been a cross-sectional study
+(one measurement per participant), using the same $N$ participants?" Only
+the variance changes -- $\beta$ is the same marginal parameter either way --
+so
+
+$$S_{cs} = \sqrt{(\beta - \beta_0)^\top \Sigma_{\beta,cs}^{-1} (\beta - \beta_0)},$$
+
+where $\Sigma_{\beta,cs}$ is estimated by fitting an ordinary least-squares
+model on the same data with each row weighted by $1/n_i$ (down-weighting
+participants with more repeated measurements to emulate one draw per
+participant) and taking its HC0 sandwich variance. **Both L-RESI and
+CS-RESI use the same $N$** (the number of participants) -- only the variance
+estimator differs. This is implemented in `RESI/R/resi_pe.R` for `geeglm`/
+`gee` models, and (before this change) for `lmerMod`/`lme` with $N$ always
+taken from a single, fixed grouping factor.
+
+## 3. What changes with more than one clustering level
+
+A 3+ level nested mixed model (e.g., `math ~ ... + (1 | schoolid/childid)`)
+has *two* candidate units of independent replication: schools ($N_{\text{school}} = 60$)
+and children ($N_{\text{child}} = 1721$, nested within schools). Nothing in
+Sections 1-2 singles out one of these as "the" sample size -- the RESI can,
+in principle, be defined **at either level**, by treating that level's units
+as the independent replicates:
+
+$$S_k = \sqrt{(\beta - \beta_0)^\top \Sigma_{\beta,k}^{-1} (\beta - \beta_0)}, \qquad
+  \hat S_k = \sqrt{\max\left(0, \frac{T_k^2 - p_1}{N_k}\right)},$$
+
+where $N_k$ is the number of level-$k$ units and $\Sigma_{\beta,k}$ is the
+asymptotic covariance of $\sqrt{N_k}(\hat\beta - \beta)$ **treating level-$k$
+units as independent**, i.e., a variance estimator clustered at level $k$.
+This is exactly what the new `level` argument controls: `level` selects
+$k$, which determines $N_k$ (from `summary(model)$ngrps`/`dims$ngrps`) *and*
+which grouping factor the robust variance is clustered by.
+
+CS-RESI generalizes the same way: reweight rows by $1/n_i^{(k)}$, where
+$n_i^{(k)}$ is the number of rows belonging to level-$k$ unit $i$ (e.g.,
+number of occasions per school, if $k = $ school), fit the weighted OLS, and
+take its HC0 sandwich variance.
+
+## 4. A hard constraint: not every level admits a valid cluster-robust variance
+
+While implementing this, `clubSandwich::vcovCR()` raised
+
+```
+Non-nested random effects detected. clubSandwich methods are not
+available for such models.
+```
+
+when `level` was set to the **child** level for Model A (which also has a
+school random intercept). This is not a bug or an implementation detail --
+it reflects a real mathematical requirement of cluster-robust variance
+estimation, and it is the central finding of this note.
+
+### 4.1 Why the constraint exists
+
+A cluster-robust ("sandwich") variance estimator is valid only if residual
+correlation is fully contained *within* clusters, i.e., different clusters
+must be genuinely independent. Consider Model A's data-generating process
+
+$$Y_{ijt} = X_{ijt}^\top \beta + b_i + b_{ij} + \varepsilon_{ijt}, \qquad
+  b_i \sim N(0, \sigma^2_{\text{school}}), \ \ b_{ij} \sim N(0, \sigma^2_{\text{child}}),$$
+
+for occasion $t$ of child $j$ in school $i$. If we cluster at the **child**
+level (cluster $=$ `childid:schoolid`), two different children $j \ne j'$ in
+the *same* school $i$ are placed in different clusters -- but
+$\mathrm{Cov}(Y_{ijt}, Y_{ij't'}) = \sigma^2_{\text{school}} \ne 0$ because
+they share the school random effect $b_i$. The sandwich estimator's "meat"
+matrix implicitly assumes this cross-cluster covariance is zero, so
+clustering at the child level silently drops (rather than robustly
+estimates) the school-level correlation, and the resulting variance
+estimate is invalid, not merely conservative or approximate. Clustering at
+the **school** level does not have this problem: two rows in different
+clusters (different schools) share no random effect by construction, so
+they are genuinely independent, and any within-school correlation (from
+either $b_i$ or $b_{ij}$) is fully absorbed into the school cluster.
+
+### 4.2 The general rule and how it is checked
+
+In general, for a cluster variable $c$ to give a valid cluster-robust
+variance for a mixed model with random-effect grouping factors
+$g_1, \dots, g_Q$, $c$ must be **constant within every level of every**
+$g_q$ -- equivalently, $c$ must be at least as coarse as (a refinement of)
+the model's **outermost** random-effect grouping factor. `clubSandwich`
+checks this internally (`is_nested_lmerMod()`/`check_nested()`): for each
+model grouping factor $g_q$ and each of its levels, the candidate cluster
+$c$ must take exactly one value. Concretely, for Model A:
+
+- `level = "schoolid"` (60 groups): valid -- every child (`childid:schoolid`)
+  belongs to exactly one school, and every school belongs to exactly one
+  school (trivially). This is also `clubSandwich`'s own default (`get_outer_group()`),
+  which always uses the model's outermost grouping factor.
+- `level = "childid:schoolid"` (1721 groups): **invalid** -- most schools
+  contain more than one child, so a school's rows span multiple
+  `childid:schoolid` clusters, meaning the required cross-cluster
+  independence is violated.
+
+**Practical consequence:** for a $K$-level nested random-intercept model,
+`level` can only be validly set to the outermost grouping factor (or,
+equivalently, `level = NULL`'s coarsest available choice) when a
+cluster-robust `vcovfunc` (the package default, `clubSandwich::vcovCR`) is
+used. `RESI/R/resi_pe.R` now raises an informative error (rather than
+`clubSandwich`'s cryptic one) when an explicit `level` is not achievable
+this way, pointing back to this note.
+
+### 4.3 Why the *default* behavior mixes levels, and why that is preserved
+
+Before this change (and still, when `level = NULL`), `resi_pe.lmerMod()`/
+`resi_pe.lme()` used $N$ from the model's **finest** grouping level (e.g.,
+number of children) together with `clubSandwich`'s own default variance
+clustering, which is the **outermost** level (e.g., schools) --
+i.e., the pre-existing default already mixed two different levels'
+information (a finer $N$ paired with a coarser-clustered variance). Given
+Section 4.1-4.2, this default is not the mathematically self-consistent
+"$S_k$ at a single level $k$" of Section 3 -- but it is retained unchanged
+here for backward compatibility (all existing numeric outputs and tests are
+unaffected). When `level` is **explicitly** supplied, the implementation
+now also re-clusters the variance at that level (raising the error in
+Section 4.2 if it is not a valid choice), so that an explicit `level` gives
+the mathematically consistent quantity from Section 3, while the default
+remains exactly what it was before.
+
+## 5. Mapping to the implementation
+
+`RESI/R/resi_pe.R`:
+
+- `.resiMixedLevelInfo(ngrps_vec, level)` resolves `level` (`NULL`,
+  a grouping-factor name, or a numeric index into
+  `summary(model)$ngrps` / `summary(model)$dims$ngrps[seq_len(dims$Q)]`)
+  to `list(N, name, explicit)`.
+- `N` is used directly as the sample size in `chisq2S()`/`z2S()` for both
+  L-RESI and CS-RESI (Section 3).
+- The per-row grouping factor for the resolved level (`model.full@flist[[name]]`
+  for `lmerMod`; `data[[name]]` for `lme`, since nlme's grouping variables
+  are literal data columns, unlike `lme4`'s synthetic nested-interaction
+  labels such as `"childid:schoolid"`) is used both:
+  - as the CS-RESI reweighting variable ($1/n_i^{(k)}$, Section 3), and
+  - (only when `level` is **explicit**) injected as `vcov.args$cluster` for
+    `clubSandwich::vcovCR`, so the L-RESI variance is clustered at the same
+    level as $N$ (Section 4.3).
+- If clustering at an explicit level is mathematically invalid
+  (Section 4.2), the `clubSandwich` error is caught and re-raised with a
+  message pointing back to this note.
+
+## 6. Worked example (Model A, `mlmRev::egsingle`)
+
+For `math ~ year + female + black + hispanic + size_100 + lowinc_10 + (1 | schoolid/childid)`:
+
+| `level`                 | $N$  | Variance clustered at | Valid? |
+|-------------------------|------|------------------------|--------|
+| `NULL` (default)        | 1721 (child) | school (`clubSandwich` default) | yes (pre-existing, mixed-level default) |
+| `"schoolid"`             | 60   | school                 | yes (self-consistent $S_{\text{school}}$) |
+| `"childid:schoolid"`     | 1721 | child                  | **no** -- errors informatively |
+
+Selected point estimates (`resi_pe(fit, level = ...)`):
+
+| Term        | `level = NULL` L-RESI | `level = "schoolid"` L-RESI |
+|-------------|:---------------------:|:----------------------------:|
+| `year`      | 1.109                 | 5.938                        |
+| `black1`    | 0.148                 | 0.791                        |
+| `lowinc_10` | 0.111                 | 0.594                        |
+
+As expected, computing the RESI relative to the much smaller school-level
+$N$ (60 vs. 1721) inflates the effect size, since $S \propto 1/\sqrt N$ for
+a fixed Wald statistic magnitude (though the Wald statistic itself also
+changes because the variance is now clustered differently).
+
+## 7. Open questions / not addressed here
+
+- **Auto-detection of the "right" level.** This note documents how to
+  compute the RESI *at a level the user specifies*; it does not address
+  automatically choosing or recommending a level based on the study design
+  (the original Goal 2 design question in `instructions/instructions.md`).
+- **Confidence intervals.** This note only concerns point estimation. The
+  asymptotic CI machinery (`resi_asymptotic.R`) has not been extended to
+  the cluster-robust, multi-level setting, and the nonparametric bootstrap
+  CI for `resi.lmerMod()`/`resi.lme()` is not yet implemented at all
+  (`resi()` still warns and returns point estimates only).
+- **Generalized (non-Gaussian) mixed models.** Not addressed; `resi_pe`
+  does not yet have a `glmer` method.
+- **Non-nested / crossed random effects.** Section 4's constraint was
+  derived and checked for purely nested designs (`schoolid/childid`);
+  crossed random-effects models (e.g., `(1|item) + (1|subject)`) may have
+  no single grouping factor coarse enough to satisfy the constraint at all,
+  in which case no level (other than treating the whole sample as one
+  cluster) would admit a valid cluster-robust variance.

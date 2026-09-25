@@ -170,7 +170,8 @@ see Goal 5a for the two working model variants.
 additions, `longitudinalPlasmodeSim()`]
 
 ### Goal 2: Extend `resi_pe`/`resi_asymptotic` machinery to `lmer`/`lme`
-**Status:** Not started
+**Status:** Not started (CI methods); `level` option and `resi_pe.lme` parity
+implemented 2026-09-25 (see below).
 **Description:** Add asymptotic CI methods (QF and CF — mirroring
 `resi_asymptotic.R`'s `.resi_precompute_ext()`/`.resi_contrast_ext()` framework)
 for the existing `resi_pe.lmerMod` (L-RESI/CS-RESI) point estimates, and the
@@ -189,12 +190,57 @@ estimates only.
 - For the L-RESI the unit really depends on the study design. For small number of sites with large number of observations at each site the unit is really the individuals at each site. For many individuals with repeated measures in individual, the unit is the individual as well. Because the individual occurs at different levels in the mixed model, there really needs to be an option for the user to specify the unit and for the code to try to figure it out if they don't and report clearly what the unit is. This affects the scaling factor "n" for computing the RESI effect size.
 - `glmer` should (generalized linear mixed models) be in scope for this
   goal, or only Gaussian `lmer`/`lme`. But let's hold off for now until we've validate mixed models and gams.
+
+**`level` option implemented (2026-09-25):** `resi_pe.lmerMod` and
+`resi_pe.lme` both gained a `level` argument controlling which grouping
+factor's number of groups is used as the RESI's sample-size scaling `n`.
+Default (`level = NULL`) is the finest/lowest clustering level (e.g. the
+child/subject level in a 3-level nested design), matching the first entry of
+`summary(model)$ngrps` (`lmerMod`) or `summary(model)$dims$ngrps` (`lme`) —
+this preserves the exact prior default behavior. `level` can be set to the
+name of any grouping factor in the model (e.g. `"schoolid"`) or a numeric
+index to compute L-RESI/CS-RESI relative to a coarser level's `n` instead.
+Both L-RESI and CS-RESI (and the anova-table versions) use the same chosen
+`N`, following the existing `geeglm`/`glmgee` L-RESI/CS-RESI convention
+(only the variance estimator differs between L- and CS-RESI, not the sample
+size). Implemented via a shared internal helper `.resiMixedLevelN()` in
+`RESI/R/resi_pe.R`. This does not yet address the "auto-detect and report
+the unit" half of the design question above — `level` must currently be set
+explicitly by the user; auto-detection is still open.
+
+**Bug fix (2026-09-25):** `resi_pe.lmerMod`'s CS-RESI computation looked up
+a data column literally named after `lme4`'s grouping-factor label (e.g.
+`"childid:schoolid"` for `(1 | schoolid/childid)`), which does not exist as
+an actual column and crashed for any nested random-effects model (including
+Model A from Goal 5a). Fixed to use `model.full@flist[[1]]` (the per-row
+finest-level cluster membership lme4 already computes internally) instead.
+
+**`resi_pe.lme` upgraded to parity with `resi_pe.lmerMod` (2026-09-25):**
+the existing `resi_pe.lme` (nlme) was a simpler, older implementation with
+only a single `RESI` column (no CS-RESI, no naive-vs-robust-variance
+branch, no `unbiased`/`level` options). Rewrote it to mirror
+`resi_pe.lmerMod` exactly: same CS-RESI weighted-independence-lm + HC0
+sandwich approach (using `nlme::getData()`/`dims$ngrps` instead of lme4's
+`model.frame()`/`ngrps`, since nlme's `formula()` is already fixed-effects-
+only and `getData()` returns the full analysis data directly, unlike
+lmerMod's more involved data-frame reconstruction), same naive-variance
+branch, same `unbiased`/`level` arguments, same `Robust.SE`/`Robust Wald`/
+`L-RESI`/`CS-RESI` column names. Verified numerically: fitting the *same*
+model (Model A, `math ~ ... + (1|schoolid/childid)` in `lme4` vs.
+`~1|schoolid/childid` in `nlme::lme`) with `method="ML"` produces
+**identical** L-RESI/CS-RESI point estimates and anova tables between the
+two packages, at both the default (child) and `level="schoolid"` settings.
+Updated `tests/testthat/test-resi.R`'s one existing `resi_pe.lme` test to
+use the new `'L-RESI'` column name (same expected numeric values — the
+formula for that column is unchanged from the old `'RESI'` column, only the
+name changed and `CS-RESI` was added). Full `test-resi.R` (81 tests) and
+`test-resi_asymptotic.R` (71 tests) suites pass.
 **Expected behavior / acceptance criteria:** CI coverage
 validated via `simCalibrationSim`-style study against a bootstrap reference,
 similar to how QF/CF were validated against the existing bootstrap for `lm`/`glm`. Before that though, the calibration style validation simulations.
 **Files:**
 - Functions: `RESI/R/resi_asymptotic.R`, `RESI/R/resi.R` (`resi.lmerMod`,
-  `resi.lme`), `RESI/R/resi_pe.R` (`resi_pe.lmerMod`, new `resi_pe.lme`?)
+  `resi.lme`), `RESI/R/resi_pe.R` (`resi_pe.lmerMod`, `resi_pe.lme`)
 - Output: Similar to the existing function outputs with estimates and CIs.
 
 ### Goal 3: `resi_pe`/`resi` methods for `gam` and `bam` (mgcv)

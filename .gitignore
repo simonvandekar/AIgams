@@ -11,3 +11,9 @@ sim_raw/
 .Rhistory
 .Rproj.user/
 .DS_Store
+
+# Third-party reference materials (published papers/supplements) kept locally
+# for reference only; not redistributed via version control. Original notes
+# we write ourselves (e.g. *.qmd) are still tracked.
+notes/*.pdf
+notes/*.tex
