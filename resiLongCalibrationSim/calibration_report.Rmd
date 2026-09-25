@@ -20,10 +20,8 @@ egsingle <- local({
   e$egsingle
 })
 
-real_summary  <- readRDS("summary_table.rds")
 synth_summary <- readRDS("../tests/synthetic_calibration_summary.rds")
 fixedn_summary <- readRDS("../tests/synthetic_fixed_n_summary.rds")
-plasmode_fixedn_summary <- readRDS("../tests/plasmode_fixed_n_summary.rds")
 hybrid_summary <- readRDS("../tests/hybrid_plasmode_summary.rds")
 hybrid_fixedn_summary <- readRDS("../tests/hybrid_plasmode_fixed_n_summary.rds")
 ```
@@ -32,12 +30,55 @@ hybrid_fixedn_summary <- readRDS("../tests/hybrid_plasmode_fixed_n_summary.rds")
 
 This report documents Goal 5a of the RESI mixed-model extension project (see
 `instructions/instructions.md` and `log/claudeLog.md` at the repository root):
-a calibration check of the plasmode simulation machinery for `lme4::lmer`
-before any RESI confidence-interval theory is layered on top. It collects, in
-one place: the dataset used, the exact simulation settings, the full-scale
-calibration results, and a follow-up diagnostic simulation that tests a
-hypothesis about the source of a fixed-effect SE mis-calibration found in the
-full-scale run.
+a calibration check of the simulation machinery for `lme4::lmer` before any
+RESI confidence-interval theory is layered on top. It collects, in one
+place: the dataset used, the simulation settings, the diagnostics that
+identified a fixed-effect SE mis-calibration under full bootstrap
+resampling of the real data, and the **hybrid plasmode simulation**, which
+is now the primary validation method for calibration going forward (see
+the note below).
+
+# Note: full bootstrap (plasmode) resampling does not produce consistent SEs
+
+Earlier work in this project ran `longitudinalCalibrationSim()`, which
+resamples the real `egsingle` data with a two-stage **with-replacement**
+cluster bootstrap (draw schools with replacement, then draw children with
+replacement within each drawn school) and refits Model A/B on each
+resampled dataset. That full-bootstrap approach produced fixed-effect
+model-based standard errors that were **not** consistent with the true
+(Monte Carlo) sampling variability of the estimates: `mean_model_se / mc_sd`
+plateaued well below 1 for child- and occasion-level covariates (`female`,
+`black`, `hispanic`, `year`), and the between-school variance component
+(`var_schoolid`) showed substantial, growing bias as the number of
+resampled schools grew. This pattern held on both the real data and a
+synthetic dataset generated from the same fitted model, and was not fully
+resolved by decoupling the number of sites from the number of subjects per
+site (see the diagnostic sections below for that history).
+
+**Simon's hypothesis:** this failure is caused by real slope variation
+across the sampling levels (e.g. schools and children have their own,
+slightly different coefficients for covariates such as `year`, `female`,
+`black`, `hispanic`) that is **not included in the model formula** (Model A
+only has random intercepts, not random slopes, for these covariates). When
+the real data is resampled with replacement, this unmodeled cross-level
+slope heterogeneity is present in every replicate and inflates the true
+sampling variability of the fixed-effect estimates beyond what the fitted
+model's SE formula -- which assumes the random-intercept-only structure is
+correct -- can capture. This is consistent with the slope-heterogeneity
+diagnostic below, which found that removing true slope heterogeneity from
+the data-generating process (a synthetic outcome simulated directly from
+Model A's own fitted parameters, with no unmodeled heterogeneity by
+construction) recovers correct SE calibration.
+
+**Going forward, the hybrid plasmode simulation (BLUP-resampled random
+effects; see the dedicated section below) is the primary method used to
+validate calibration.** It keeps a fixed covariate design (so no unmodeled
+cross-level slope heterogeneity can enter) while still using empirically
+estimated (resampled, rescaled) random effects rather than a fully
+parametric Normal draw, and it reproduces correct SE calibration. The raw
+full-bootstrap plasmode results and code are no longer included in this
+report; they remain available in `tests/` and `RESI/R/simulations.R` for
+reference if needed.
 
 # Dataset: `mlmRev::egsingle`
 
@@ -139,95 +180,20 @@ full-data fit's fixed effects and variance components are used as the
 "truth"/population target that each replicate is compared against (the same
 convention `insurancePlasmodeSim()`/`simCalibrationSim()` use for `lm`/`glm`).
 
-## Two-stage hierarchical plasmode resampling
+## Two-stage hierarchical plasmode resampling (deprecated)
 
-Because the design is genuinely 3-level and nested (not crossed), each
-replicate is resampled in two stages, implemented in
-`RESI/R/simulations.R` (`.longSimBuildIndex()` / `.longSimResampleHierarchical()`):
+An earlier version of this simulation resampled the real data directly in
+two stages (schools with replacement, then children with replacement within
+each drawn school). As documented in the note above, this full-bootstrap
+approach does not produce fixed-effect SEs consistent with the true
+sampling variability, so it is no longer used for calibration; see
+`RESI/R/simulations.R` (`.longSimResampleHierarchical()`) for the
+implementation if needed for reference.
 
-1. Draw `n_schools` schools **with replacement** from the 60 real schools.
-2. Within each drawn school, draw (with replacement) as many children as
-   that *source* school originally had, keeping each child's full row set
-   (all measurement occasions) intact.
-3. Re-key `schoolid`/`childid` so repeated draws of the same school/child are
-   treated as distinct clusters by `lmer`.
-
-This is the standard "cases" cluster bootstrap for nested multilevel data.
-
-## Settings used for the full-scale run
-
-```{r settings-table}
-settings_tab <- data.frame(
-  Setting = c("nsim", "n_schools.vec", "model", "mc.cores.reps",
-              "mc.cores.settings", "Estimation"),
-  Value = c("1000", "c(15, 30, 60, 90, 120)", "both (A and B)", "24",
-            "1 (sequential over the 10 model x n_schools cells)",
-            "REML = FALSE, lmerControl(optimizer = \"bobyqa\", optCtrl = list(maxfun = 2e5))")
-)
-kable(settings_tab, caption = "longitudinalCalibrationSim() production settings (main.R)")
-```
-
-Random-effect (variance component) standard errors are **not** computed;
-only fixed-effect model-based SEs are compared against the Monte Carlo SD of
-each fixed effect across replicates. Variance-component point estimates are
-still tracked for bias.
-
-# Full-scale calibration results (real data)
-
-Ran on 2026-09-05: 1000/1000 successful fits in every one of the 10
-(model x `n_schools`) cells, 0 convergence failures.
-
-## Fixed-effect bias and SE calibration
-
-Bias (`truth - mc_mean`) shrinks toward 0 for every fixed effect in both
-models as `n_schools` grows, as expected. SE calibration
-(`mean_model_se / mc_sd`, target 1) shows a **two-tier pattern**:
-
-```{r se-ratio-table}
-fe <- real_summary[grepl("^beta_", real_summary$param), ]
-wide <- reshape(fe[, c("model", "param", "n_schools", "se_ratio")],
-                 idvar = c("model", "param"), timevar = "n_schools", direction = "wide")
-wide <- wide[order(wide$model, wide$param), ]
-kable(wide, digits = 3, row.names = FALSE,
-      caption = "mean_model_se / mc_sd by fixed effect, model, and n_schools (target = 1)")
-```
-
-- **School-level covariates** (`size_100`, `lowinc_10`) and the intercept
-  converge to ~1.0 by `n_schools = 60`.
-- **Child-level, time-invariant covariates** (`female`, `black`, `hispanic`)
-  plateau around **0.7** and never approach 1, regardless of `n_schools`.
-- **The occasion-level covariate `year`** plateaus around **0.3-0.4**, in
-  *both* Model A and Model B, even though Model B has a random slope for
-  `year`.
-
-```{r fig-model-a, fig.cap="Model A: fixed-effect bias, SE calibration, and variance-component bias vs. n_schools."}
-knitr::include_graphics("figures/longitudinal_calibration_A.png")
-```
-
-```{r fig-model-b, fig.cap="Model B: fixed-effect bias, SE calibration, and variance-component bias vs. n_schools."}
-knitr::include_graphics("figures/longitudinal_calibration_B.png")
-```
-
-## Variance components
-
-```{r vc-bias-table}
-vc <- real_summary[!grepl("^beta_", real_summary$param), ]
-vc$rel_bias_pct <- 100 * vc$bias / vc$truth
-widevc <- reshape(vc[, c("model", "param", "n_schools", "rel_bias_pct")],
-                    idvar = c("model", "param"), timevar = "n_schools", direction = "wide")
-widevc <- widevc[order(widevc$model, widevc$param), ]
-kable(widevc, digits = 2, row.names = FALSE,
-      caption = "Variance/covariance component relative bias (%) by n_schools")
-```
-
-`var_Residual`, the child-level variance/covariance, and (in Model B)
-`var_childid_year` are all well calibrated (relative bias magnitude <=~5% at
-`n_schools = 120`). **`var_schoolid_(Intercept)` (the between-school
-variance) is the exception**: relative bias grows from about -1% at
-`n_schools = 15, 30` out to **-28% to -35%** at `n_schools = 60, 90, 120` --
-i.e. the Monte Carlo mean increasingly *overestimates* the full-data
-between-school variance once `n_schools` approaches/exceeds the real pool of
-60 schools.
+Random-effect (variance component) standard errors are **not** computed by
+any of the simulations below; only fixed-effect model-based SEs are
+compared against the Monte Carlo SD of each fixed effect across replicates.
+Variance-component point estimates are still tracked for bias.
 
 # Slope-heterogeneity diagnostic (synthetic DGP)
 
@@ -236,7 +202,8 @@ between-school variance once `n_schools` approaches/exceeds the real pool of
 **Hypothesis:** minor real variation in schools' *own* coefficients for
 covariates other than the intercept (which Model A cannot model, since it
 only has random intercepts) is being absorbed into the fixed-effect sampling
-variability, causing the SE mis-calibration above.
+variability, causing the SE mis-calibration under full bootstrap resampling
+described in the note above (this is Simon's hypothesis for that failure).
 
 **Test:** `tests/test_egsingle_synthetic_calibration.R` fits Model A once to
 the real data to obtain the fixed effects, school-intercept variance,
@@ -253,19 +220,6 @@ design cycles those patterns and re-keys the generated sites; this is a
 design choice, not random resampling.
 
 ## Results
-
-```{r synth-comparison-table}
-real_a <- real_summary[real_summary$model == "A" & grepl("^beta_", real_summary$param),
-                        c("param", "n_schools", "se_ratio")]
-names(real_a)[3] <- "se_ratio_real"
-synth_fe <- synth_summary[grepl("^beta_", synth_summary$param),
-                           c("param", "n_schools", "se_ratio")]
-names(synth_fe)[3] <- "se_ratio_synth"
-cmp <- merge(real_a, synth_fe, by = c("param", "n_schools"))
-cmp <- cmp[order(cmp$param, cmp$n_schools), ]
-kable(cmp, digits = 3, row.names = FALSE,
-      caption = "se_ratio: real data vs. synthetic (zero true slope heterogeneity), Model A")
-```
 
 ```{r fig-synth, fig.cap="Model A refit on the synthetic (zero true slope heterogeneity) dataset: fixed-effect bias, SE calibration, and variance-component bias vs. n_schools."}
 knitr::include_graphics("synthetic_diagnostic/figures/longitudinal_calibration_A_synth.png")
@@ -427,111 +381,48 @@ knitr::include_graphics("hybrid_plasmode/figures/longitudinal_calibration_fixedN
 - **Fixed-effect SE calibration matches the direct-DGP synthetic results.**
   Across both grids, `se_ratio` is approximately 0.84-1.05 for every fixed
   effect, with no collapse as `n_per_site` increases -- the severe
-  with-replacement-duplication artifact seen in the real-data plasmode
-  section does not appear here, even though random effects are now drawn
-  by resampling (with replacement) rather than from a Normal distribution.
+  mis-calibration seen under full bootstrap resampling of the real data
+  (see the note near the top of this report) does not appear here, even
+  though random effects are now drawn by resampling (with replacement)
+  rather than from a Normal distribution.
 - **`var_schoolid_(Intercept)` bias also matches the direct-DGP pattern:**
   positive and shrinking with `n_schools` (about 31% at 15 sites down to
   about 5% at 120 sites, or 5-6% at 60 sites across all `n_per_site`
   values), essentially flat across `n_per_site` -- not the negative,
-  growing-with-`n_schools` pattern seen in the real-data plasmode
-  bootstrap.
+  growing-with-`n_schools` pattern seen under full bootstrap resampling.
 - `var_childid:schoolid_(Intercept)` and `var_Residual` remain well
   calibrated (a few tenths of a percent) across both grids.
 - **Conclusion:** resampling with replacement from a *rescaled* finite pool
   of BLUPs behaves like drawing from the underlying Normal distribution for
-  this purpose -- it does **not** reproduce the plasmode bootstrap's
-  fixed-effect SE collapse or the sign-flipped, `n_schools`-growing
-  `var_schoolid` bias. This indicates those plasmode-specific patterns come
-  from resampling entire rows/clusters of the real, finite dataset (with
-  their attendant duplication of full covariate-and-residual blocks), not
-  merely from using a finite, resampled -- as opposed to continuously
-  distributed -- source for the random effects.
-
-# Plasmode (real-data) confirmation at the new sample sizes
-
-## Motivation and method
-
-The diagnostic above used a *synthetic* DGP so the "truth" fixed effects and
-variance components were known exactly. But it also raises the question:
-does the same artifact appear on the actual real (plasmode) data, resampled
-directly with no `simulate()` step at all? If the with-replacement
-duplication explanation is correct, it should -- the mechanism is a property
-of the resampling design, not of whether the fitted model matches the
-data-generating process. `tests/test_egsingle_plasmode_fixed_n.R` reruns the
-exact same grid (`n_schools in {15, 30, 60} x n_per_site in {25, 50, 100,
-200}`, `nsim = 1000`, Model A) directly on real `egsingle`, resampling with
-`.longSimResampleFixedN()` from the real data and comparing against the
-real full-data ML fit as truth (no synthetic outcome is generated).
-
-## Results
-
-```{r plasmode-fixedn-se-table}
-fe <- plasmode_fixedn_summary[grepl("^beta_", plasmode_fixedn_summary$param), ]
-wide <- reshape(fe[, c("param", "n_schools", "n_per_site", "se_ratio")],
-                 idvar = c("param", "n_schools"), timevar = "n_per_site", direction = "wide")
-wide <- wide[order(wide$param, wide$n_schools), ]
-kable(wide, digits = 3, row.names = FALSE,
-      caption = "mean_model_se / mc_sd by fixed effect, n_schools, and n_per_site (real/plasmode data, Model A)")
-```
-
-```{r plasmode-fixedn-vc-table}
-vc <- plasmode_fixedn_summary[!grepl("^beta_", plasmode_fixedn_summary$param), ]
-vc$rel_bias_pct <- 100 * vc$bias / vc$truth
-widevc <- reshape(vc[, c("param", "n_schools", "n_per_site", "rel_bias_pct")],
-                    idvar = c("param", "n_schools"), timevar = "n_per_site", direction = "wide")
-widevc <- widevc[order(widevc$param, widevc$n_schools), ]
-kable(widevc, digits = 2, row.names = FALSE,
-      caption = "Variance-component relative bias (%) by n_schools and n_per_site (real/plasmode data, Model A)")
-```
-
-```{r fig-plasmode-fixedn, fig.cap="Real (plasmode) data, Model A: top row fixed-effect SE calibration vs. n_per_site (one panel per n_schools); bottom row variance-component relative bias vs. n_schools (one line per n_per_site)."}
-knitr::include_graphics("figures/longitudinal_calibration_fixedN_plasmode.png")
-```
-
-## Interpretation
-
-The real-data (plasmode) analysis below is a separate, bootstrap-based
-analysis of the observed outcome. It is retained as a comparison to the
-original plasmode pipeline; unlike the corrected synthetic analyses above,
-it does resample sites and subjects with replacement. Therefore its results
-should not be interpreted as a validation of the direct-DGP synthetic
-results, and differences between them are expected:
-
-- `year`, `female`, `black1`, `hispanic1`: `se_ratio` again collapses sharply
-  with `n_per_site` (e.g. `year`: ~0.33 at `n_per_site=25` down to ~0.13 at
-  `n_per_site=200`) and is essentially flat across `n_schools`.
-- School-level fixed effects (`(Intercept)`, `size_100`, `lowinc_10`): again
-  mild, roughly stable `se_ratio` (~0.75-0.98) across the grid, improving
-  slightly with `n_schools`.
-- `var_schoolid_(Intercept)`: bias again grows more negative as `n_schools`
-  increases (15: -6% to -25%; 30: -23% to -34%; 60: -35% to -39%), and here
-  also drifts somewhat more negative with `n_per_site` at a given
-  `n_schools` -- consistent with duplication pressure building from *both*
-  axes simultaneously once real data (with only 60 schools total) is used.
-- `var_childid:schoolid_(Intercept)` and `var_Residual`: small, stable bias
-  (a few percent) across the whole grid, as before.
-
-The corrected synthetic analysis is the model-based reference: it holds the
-covariate design fixed and repeatedly draws the random effects and residual
-errors from the fitted Normal DGP. The plasmode analysis instead measures a
-conditional cluster-bootstrap distribution of the observed outcome. These
-are different estimands, so the plasmode SE patterns should not be used to
-argue that the direct-DGP synthetic SEs are miscalibrated.
+  this purpose -- it does **not** reproduce the full-bootstrap plasmode's
+  fixed-effect SE collapse or its sign-flipped, `n_schools`-growing
+  `var_schoolid` bias. This indicates those full-bootstrap-specific
+  patterns come from resampling entire rows/clusters of the real, finite
+  dataset (with their attendant duplication of full covariate-and-residual
+  blocks, and the unmodeled cross-level slope heterogeneity that comes
+  along with them per Simon's hypothesis above), not merely from using a
+  finite, resampled -- as opposed to continuously distributed -- source for
+  the random effects. This is why the hybrid plasmode simulation is now the
+  primary calibration validation method: it retains empirically estimated
+  random effects while avoiding the unmodeled slope heterogeneity that a
+  full bootstrap of the real rows reintroduces.
 
 # Open questions / next steps
 
-- The `n_schools`/`n_per_site` experiment shows that the synthetic and
-  plasmode pipelines have the same conditional resampling behavior. It does
-  **not** establish that fixed sample size is the cause, nor that the model
-  is wrong. The next discriminating experiment is fresh DGP generation on
-  every replicate, with the requested design held fixed.
+- Simon's slope-heterogeneity hypothesis (see the note above) explains why
+  full bootstrap resampling of the real data fails to produce consistent
+  SEs, but has not been separately, directly confirmed for every affected
+  term (it fully explains `year`'s mis-calibration in the earlier
+  slope-heterogeneity diagnostic, but not the full extent of the
+  child-level-covariate or `var_schoolid` patterns). The hybrid plasmode
+  simulation sidesteps this by construction (fixed covariate design, so no
+  unmodeled cross-level slope heterogeneity can enter) rather than
+  requiring a full resolution of the hypothesis.
 - These findings are directly relevant to the open Goal 2 design question
   about the effective sample size `n` for L-RESI: a single "number of
   schools" (or "number of children") scaling will not correctly calibrate
   SEs for *all* fixed effects simultaneously in this 3-level design; the
-  correct unit plausibly differs by which level a covariate varies at, and
-  is fundamentally capped by the real finite pool size at that level.
-- Decide whether `n_schools`/`n_per_site` values that oversample beyond the
-  real pool (60 schools; ~5-89 children per school) should be dropped from
-  future sweeps or are informative as-is.
+  correct unit plausibly differs by which level a covariate varies at.
+- Decide whether `n_schools`/`n_per_site` values that exceed the real pool
+  size (60 schools; ~5-89 children per school) should be dropped from
+  future hybrid-plasmode sweeps or are informative as-is.

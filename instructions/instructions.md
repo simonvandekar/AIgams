@@ -496,6 +496,25 @@ rows/clusters of the finite real dataset, not merely from using a finite,
 resampled (rather than continuously distributed) source for the random
 effects. Included in `calibration_report.Rmd`/`.html`.
 
+**Report cleanup + primary-method decision (2026-09-25):** Removed the
+full-bootstrap plasmode results and code from `calibration_report.Rmd`/
+`.html` (the "Full-scale calibration results (real data)" and "Plasmode
+(real-data) confirmation at the new sample sizes" sections) per user
+request. Added a prominent note documenting that full bootstrap resampling
+of the real data does not produce fixed-effect SEs consistent with the true
+sampling variability, and recording **Simon's hypothesis**: real cross-level
+slope variation not included in the model formula (Model A has random
+intercepts only) is reintroduced into every bootstrap replicate, inflating
+true sampling variability beyond what the model's SE formula can capture.
+**The hybrid plasmode simulation is now the primary method for validating
+calibration** going forward, since it keeps the covariate design fixed
+(no unmodeled slope heterogeneity can enter) while still using empirically
+estimated random effects. The underlying full-bootstrap R code
+(`longitudinalCalibrationSim()`, `.longSimResampleHierarchical()`,
+`.longSimResampleFixedN()`) and raw result files remain in `RESI/R/
+simulations.R` and `tests/` for reference; only the report content was
+removed.
+
 **5b. Validate against a trusted reference** (e.g., bootstrap RESI for
 `lmerMod`/`lme`, or the existing `geeglm` CS-RESI/L-RESI as a cross-check for
 the `lmer` case, mirroring `test-resi.R`'s `"geeglm (exchangeable, positive
