@@ -98,20 +98,186 @@ Sections 1-2 singles out one of these as "the" sample size -- the RESI can,
 in principle, be defined **at either level**, by treating that level's units
 as the independent replicates:
 
-$$S_k = \sqrt{(\beta - \beta_0)^\top \Sigma_{\beta,k}^{-1} (\beta - \beta_0)}, \qquad
-  \hat S_k = \sqrt{\max\left(0, \frac{T_k^2 - p_1}{N_k}\right)},$$
+The notation $\Sigma_{\beta,k}$ used in an earlier version of this note was
+too strong. There is not generally one asymptotic covariance matrix for
+each arbitrary level $k$. The normalization and limiting covariance depend
+on the **asymptotic regime**: which numbers of independent top-level units
+and lower-level observations tend to infinity, and at what rates. A more
+accurate generic statement is
 
-where $N_k$ is the number of level-$k$ units and $\Sigma_{\beta,k}$ is the
-asymptotic covariance of $\sqrt{N_k}(\hat\beta - \beta)$ **treating level-$k$
-units as independent**, i.e., a variance estimator clustered at level $k$.
-This is exactly what the new `level` argument controls: `level` selects
-$k$, which determines $N_k$ (from `summary(model)$ngrps`/`dims$ngrps`) *and*
-which grouping factor the robust variance is clustered by.
+$$D_N(\hat\beta-\beta) \;\overset{d}{\longrightarrow}\;
+  \mathcal N(0,\,C_\beta),$$
+
+where $D_N$ may be scalar or block-diagonal, rather than necessarily
+$\sqrt{N_k}I$. The RESI normalization must use the same $D_N$ that governs
+the covariance estimator being used. The `level` argument is therefore a
+practical choice of an independent-cluster scale for the current
+cluster-robust implementation, not a claim that every grouping level has a
+valid standalone mixed-model asymptotic distribution.
 
 CS-RESI generalizes the same way: reweight rows by $1/n_i^{(k)}$, where
 $n_i^{(k)}$ is the number of rows belonging to level-$k$ unit $i$ (e.g.,
 number of occasions per school, if $k = $ school), fit the weighted OLS, and
 take its HC0 sandwich variance.
+
+### 3.1 What the mixed-model asymptotics actually normalize
+
+For a two-level random-intercept model, write
+
+$$Y_{ij}=\beta_0 + X_{i}^{(b)\top}\beta_b
+       + X_{ij}^{(w)\top}\beta_w + \alpha_i + e_{ij},
+\qquad i=1,\ldots,g,\quad j=1,\ldots,m_i,$$
+
+with $n=\sum_{i=1}^g m_i$. Here $\beta_b$ multiplies covariates constant
+within cluster and $\beta_w$ multiplies covariates that vary within cluster.
+Lyu and Welsh (2022) show that, when both the number of clusters and the
+minimum cluster size increase, the natural normalization for the regression
+parameters is
+
+$$K_\beta^{1/2}(\hat\beta-\beta),
+\qquad
+K_\beta=\operatorname{diag}\left(gI_{p_b+1},\; nI_{p_w}\right),$$
+
+and
+
+$$K_\beta^{1/2}(\hat\beta-\beta)
+  \overset{d}{\longrightarrow} \mathcal N(0,C_\beta).$$
+
+Thus, approximately,
+
+$$\operatorname{Var}(\hat\beta)
+  \approx K_\beta^{-1/2}C_\beta K_\beta^{-1/2}.$$
+
+Between-cluster coefficients and the intercept are therefore $g^{-1/2}$
+parameters, while within-cluster coefficients are $n^{-1/2}$ parameters.
+They are not all normalized by the same number of observations. In the
+special case where cluster sizes remain bounded, $n/g$ is bounded and all
+components are effectively on the $g^{-1/2}$ scale; the separate $n^{-1/2}$
+rate becomes relevant when cluster sizes grow.
+
+This is the answer to the question "what is the normalizing constant for
+$\operatorname{Var}(\hat\beta-\beta)$?": there is no single constant in the
+general mixed-model problem. For a scalar between-cluster coefficient,
+$\operatorname{Var}(\hat\beta_b) = O(g^{-1})$; for a scalar within-cluster
+coefficient, $\operatorname{Var}(\hat\beta_w) = O(n^{-1})$ under the
+increasing-cluster-size regime. For a vector containing both, use the
+block normalization $K_\beta$, not $\sqrt{g}$ or $\sqrt{n}$ for every
+component.
+
+### 3.2 Sandwich form for independent top-level clusters
+
+For a general linear mixed model partitioned into independent top-level
+clusters (schools in the example), let $X_i$ be the fixed-effect design for
+cluster $i$, $V_i$ its fitted marginal covariance, and $\Omega_i$ the true
+within-cluster covariance. If the number of top-level clusters $g$ grows
+with bounded cluster sizes, the fixed-effect estimator has the usual
+top-level-cluster sandwich limit:
+
+$$\sqrt g(\hat\beta-\beta)\overset{d}{\longrightarrow}
+  \mathcal N\left(0,A^{-1}BA^{-1}\right),$$
+
+where
+
+$$A=\lim_{g\to\infty}\frac1g\sum_{i=1}^g X_i^\top V_i^{-1}X_i,
+\qquad
+B=\lim_{g\to\infty}\frac1g\sum_{i=1}^g
+X_i^\top V_i^{-1}\Omega_iV_i^{-1}X_i.$$
+
+Consequently,
+
+$$\operatorname{Var}(\hat\beta)
+  \approx \frac1g A^{-1}BA^{-1}.$$
+
+This is the setting in which school-level cluster-robust inference is
+mathematically natural. It is also the setting required by
+`clubSandwich::vcovCR()` for a nested `lmerMod`: the cluster supplied to the
+sandwich must be at least as coarse as every random-effect grouping factor.
+
+### 3.3 What assumptions are needed when cluster sizes grow
+
+The most directly relevant reference is Lyu and Welsh (2022), who study the
+nested-error model above under the following regime and conditions:
+
+- $g\to\infty$ and $m_L=\min_i m_i\to\infty$;
+- **no restriction on the relative rate** at which $g$ and $m_L$ grow;
+- independent, identically distributed random effects and errors with finite
+  $4+\delta$ moments for some $\delta>0$ (normality is not required for
+  the asymptotic result);
+- fixed covariates, or random covariates conditioned on, with finite
+  $2+\delta$ moments;
+- limiting design moments exist and are nonsingular. In their notation,
+  the between-cluster second-moment limit and the within-cluster design
+  limit must be positive definite;
+- regularity/identifiability conditions keep the true variance components
+  in the interior of the parameter space.
+
+The important point is that there is **no required finite limit for
+$n/g$** in that increasing-cluster-size theorem. Since $m_L\to\infty$,
+$n/g$ also diverges (at least along the lower bound), and the within- and
+between-cluster parameters simply have different rates. In contrast, under
+the classical fixed-cluster-size regime, $g\to\infty$ while the $m_i$ stay
+bounded; then $n/g$ is bounded and the entire parameter vector is generally
+on the $g^{-1/2}$ scale, with a more complicated joint sandwich covariance.
+
+For a three-level design with schools, children, and occasions, write
+$g$ for schools, $m_i$ for children in school $i$, $r_{ij}$ for occasions
+for child $j$, and $n=\sum_i\sum_j r_{ij}$. A full theorem requires a
+specified regime, for example:
+
+1. **Fixed lower-level sizes:** $g\to\infty$ while the distributions of
+   $m_i$ and $r_{ij}$ remain bounded. School-level independent-cluster
+   asymptotics use $\sqrt g$.
+2. **Growing children per school:** $g\to\infty$ and
+   $\min_i m_i\to\infty$, with occasion counts bounded or controlled. A
+   child/occasion-varying coefficient can have a faster normalization than
+   a school-level coefficient, but the exact rate depends on the design
+   matrix and the covariance structure.
+3. **Growing occasions per child as well:** $g\to\infty$,
+   $\min_i m_i\to\infty$, and $\min_{ij}r_{ij}\to\infty$. This needs a
+   genuinely multi-level extension of the Lyu--Welsh argument. One should
+   expect a block normalization with one block for each level, but there is
+   no universal rule saying that the blocks are simply
+   $\sqrt g$, $\sqrt{\sum_i m_i}$, and $\sqrt n$ without additional design
+   and moment assumptions.
+
+Thus, ratios such as $(\sum_i m_i)/g$ and
+$n/(\sum_i m_i)$ matter only after the asymptotic regime is declared. They
+should not be forced to converge to a finite constant in every regime:
+under increasing cluster sizes these ratios may diverge; under bounded
+cluster sizes they remain bounded. What is required is that the normalized
+design cross-products and covariance limits exist and remain nonsingular.
+For a general three-level mixed model, deriving the exact block matrix
+$C_\beta$ and its cross-level off-diagonal terms is still an open
+mathematical task for this project; the current `level` option should be
+interpreted as a user-selected scaling convention, with the validity
+restriction in Section 4, rather than as a completed three-level asymptotic
+theorem.
+
+### 3.4 References for these regimes
+
+- Lyu, Z. and Welsh, A. H. (2022). *Increasing cluster size asymptotics for
+  nested error regression models*. Journal of Statistical Planning and
+  Inference. DOI: [10.1016/j.jspi.2021.07.009](https://doi.org/10.1016/j.jspi.2021.07.009).
+  An open version is [arXiv:2101.08951](https://arxiv.org/abs/2101.08951).
+  This is the primary reference for the separate $g^{-1/2}$ and
+  $n^{-1/2}$ normalizations and the fact that no relative growth-rate
+  restriction is needed in their two-level nested-error model.
+- Jiang, J. (1996). *REML estimation: asymptotic behavior and related
+  topics*. The Annals of Statistics, 24, 255--286. DOI:
+  [10.1214/aos/1039639365](https://doi.org/10.1214/aos/1039639365).
+  General increasing-cluster-size asymptotics for ML/REML in linear mixed
+  models; the conditions are broader but less transparent for this note's
+  purpose.
+- Jiang, J. (1998). *Asymptotic properties of the empirical BLUP and BLUE in
+  mixed linear models*. Statistica Sinica, 8, 861--885. This is relevant to
+  BLUP-based procedures and explains why increasing within-cluster sample
+  size matters for prediction of random effects.
+- Xie, M. and Yang, Y. (2003). *Asymptotics for generalized estimating
+  equations with large cluster sizes*. The Annals of Statistics, 31,
+  310--347. DOI: [10.1214/aos/1046294315](https://doi.org/10.1214/aos/1046294315).
+  Relevant for estimating-equation analogues, but it does not by itself
+  provide the variance-component asymptotics needed for ML/REML mixed
+  models.
 
 ## 4. A hard constraint: not every level admits a valid cluster-robust variance
 
@@ -240,8 +406,129 @@ $N$ (60 vs. 1721) inflates the effect size, since $S \propto 1/\sqrt N$ for
 a fixed Wald statistic magnitude (though the Wald statistic itself also
 changes because the variance is now clustered differently).
 
-## 7. Open questions / not addressed here
+## 7. Brainstorming: a genuine student-level effect size
 
+Section 4 shows that a *cluster-robust* L-RESI can only be validly computed
+at a level as coarse as the model's outermost random effect (schools, in
+Model A) -- clustering at the child level is not just "less robust," it is
+mathematically invalid, because clustering assumes independence *across*
+clusters, and children in the same school are not independent (they share
+the school random effect). But this is often the wrong question to ask.
+Cluster-robust independence is a strong, somewhat blunt requirement: it
+demands independence for *every* parameter in the model simultaneously,
+even though a single fixed-effect parameter, like the coefficient on a
+child-level covariate, is not actually estimated by comparing schools to
+each other. It is estimated (largely) by comparing *children within the
+same school* to each other. If the applied question is "what is the effect
+size of adding one more student's worth of information to a child-level
+covariate," rather than "what is the effect size of adding one more
+school," then treating $N_{\text{school}} = 60$ as the sample size, and
+requiring cluster-robust independence at the school level, is answering a
+different question than the one being asked. This section brainstorms ways
+to more directly target that question. None of these are implemented; they
+are recorded here as candidate directions.
+
+### 7.1 Use the model-based (parametric) variance instead of a sandwich
+
+The cluster-robust requirement in Section 4 is a property of *sandwich*
+variance estimators specifically -- it is not a property of the mixed model
+itself. The model-based variance of $\hat\beta$,
+$\mathrm{Var}(\hat\beta) = (X^\top \hat\Sigma_Y^{-1} X)^{-1}$, where
+$\hat\Sigma_Y$ is the fitted marginal covariance of $Y$ implied by the
+random-effects structure (school variance + child variance + residual
+variance), already correctly propagates variance from *all* levels
+simultaneously, including the within-school (child- and occasion-level)
+variability that a child-level covariate's estimate actually depends on. It
+does not require choosing a single "level" to cluster at, so the tension in
+Section 4 does not arise. The cost is that it is only as valid as the
+parametric model (correct random-effects distribution, correct variance
+structure) -- it is not robust to their misspecification the way a sandwich
+estimator is. A "student-level RESI" could plausibly be defined using
+`vcov(model)` (or `nlme`'s equivalent) directly, with $N$ = number of
+children, explicitly flagged as **model-based, not cluster-robust**. This
+is close to what the *pre-existing default* does today when `vcovfunc =
+stats::vcov` is requested (the naive branch already implemented in
+`resi_pe.lmerMod`/`resi_pe.lme`) -- except currently that branch still
+divides by whichever $N$ `level` resolves to, without a principled
+argument for why the model-based variance's effective information content
+matches that particular $N$. Making this connection precise (i.e., showing
+what $N$ the model-based variance behaves *as if* it were divided by, for
+a child-level covariate specifically) is unresolved.
+
+### 7.2 Between/within decomposition of the covariate
+
+For a covariate $X$ that varies at the child level, its effect is
+identified from two distinct sources of variation: the *within-school*
+deviations $X_{ij} - \bar X_{i\cdot}$ (differences between children in the
+same school) and the *between-school* means $\bar X_{i\cdot}$ (differences
+in the school-level average of $X$). The classic multilevel
+"contextual effects" decomposition splits a single coefficient into
+within- and between-cluster components with their own standard errors
+(e.g., via centering $X$ at the school mean and adding the school mean as
+a separate covariate). If a covariate is well-approximated as purely
+within-cluster (its between-school component is negligible or explicitly
+controlled for), the *within* component's sampling variability is governed
+by variation among children *within* schools, which is a $N_{\text{child}}$
+-scale quantity, and does not require treating schools as independent
+replicates. A "student-level RESI" for such a covariate could target only
+the within-cluster component of $\beta$, using the within-cluster
+contribution to $\Sigma_\beta$, evaluated with $N_{\text{child}}$ (or,
+more precisely, degrees of freedom based on children within schools,
+$N_{\text{child}} - N_{\text{school}}$). Open issue: this only cleanly
+applies to covariates that are (near-)purely within-cluster; a covariate
+with substantial between-school variation (e.g., a covariate that is
+almost constant within a school but differs across schools) does not have
+a well-defined "student-level" effect separate from the school-level one,
+because the identifying variation genuinely comes from comparing schools.
+
+### 7.3 Design-effect / effective-sample-size interpolation
+
+Survey statistics has a standard notion of an *effective sample size* under
+clustering, the design effect $\mathrm{DEFF} = 1 + (\bar m - 1)\,\rho$,
+where $\bar m$ is the average cluster size and $\rho$ is the intraclass
+correlation (ICC) of the outcome (or, more precisely here, of the
+covariate/residual relevant to $\beta$). The effective sample size
+$N_{\text{eff}} = n / \mathrm{DEFF}$ interpolates continuously between
+$N_{\text{school}}$ (when $\rho \to 1$, all information is at the cluster
+level) and $n$ (total rows/occasions, when $\rho \to 0$, clustering carries
+no information). This is attractive because it does not require picking a
+discrete "level" at all, and it naturally produces a small effective $n$
+for covariates that are highly confounded with school membership and a
+larger one for covariates that vary freely within schools -- i.e., it
+could give an answer to "how much did adding one more child's worth of
+information really help" for the *specific* covariate in question, rather
+than a single generic per-model choice of level. Open issue: this is
+usually derived for a single scalar summary (the outcome's ICC) in simple
+cluster designs; extending it per-coefficient in a general mixed-model Wald
+test, and connecting it back to a valid noncentrality-parameter definition
+for the RESI (Section 1), is nontrivial and not attempted here.
+
+### 7.4 Empirical (bootstrap) sampling variability at the desired level
+
+The hybrid plasmode simulation developed earlier in this project
+(`tests/test_egsingle_hybrid_plasmode.R`; see `instructions/instructions.md`)
+is, in effect, a way to sidestep this whole question empirically: it draws
+fresh school and child random effects (from rescaled BLUPs) and fresh
+residuals for a *fixed* covariate design, and measures the actual
+across-replicate sampling variability of $\hat\beta$, `mc_sd`. That
+quantity already reflects the true joint (school + child + residual)
+sampling variability without requiring a cluster-robust assumption at any
+single level, and it empirically matched the model-based (parametric)
+`vcov(model)` SEs closely (Section 3.1 vs. the corrected direct-DGP
+results). This suggests the model-based variance (Section 7.1) may already
+be an adequate stand-in for "the correct" variance under this model,
+without needing a bootstrap in practice -- but a bootstrap could still be
+useful as a robustness check against random-effects misspecification,
+playing a role analogous to what the cluster-robust sandwich is meant to
+provide at a single valid level.
+
+## 8. Open questions / not addressed here
+
+- **None of Section 7 is implemented.** These are candidate directions for
+  a genuinely student-level (or, more generally, "coarser-than-desired
+  cluster" level) effect size that does not require cluster-level
+  independence; picking one (or a combination) and formalizing/validating
+  it is future work.
 - **Auto-detection of the "right" level.** This note documents how to
   compute the RESI *at a level the user specifies*; it does not address
   automatically choosing or recommending a level based on the study design
@@ -259,3 +546,4 @@ changes because the variance is now clustered differently).
   no single grouping factor coarse enough to satisfy the constraint at all,
   in which case no level (other than treating the whole sample as one
   cluster) would admit a valid cluster-robust variance.
+

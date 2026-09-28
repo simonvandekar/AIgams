@@ -203,10 +203,29 @@ index to compute L-RESI/CS-RESI relative to a coarser level's `n` instead.
 Both L-RESI and CS-RESI (and the anova-table versions) use the same chosen
 `N`, following the existing `geeglm`/`glmgee` L-RESI/CS-RESI convention
 (only the variance estimator differs between L- and CS-RESI, not the sample
-size). Implemented via a shared internal helper `.resiMixedLevelN()` in
+size). Implemented via a shared internal helper `.resiMixedLevelInfo()` in
 `RESI/R/resi_pe.R`. This does not yet address the "auto-detect and report
 the unit" half of the design question above — `level` must currently be set
 explicitly by the user; auto-detection is still open.
+
+**Mixed-model asymptotics note (2026-09-28):** Added
+`notes/resi_mixed_model_levels.qmd`/`.html` with references and formulas for
+the actual normalization in nested mixed models. The prior shorthand
+`\Sigma_{\beta,k}` for an arbitrary level is not generally valid: the
+limiting covariance depends on the asymptotic regime. For the two-level
+nested-error model of Lyu & Welsh (2022), with `g` clusters, cluster sizes
+`m_i`, and `n = sum(m_i)`, between-cluster coefficients use `sqrt(g)` while
+within-cluster coefficients use `sqrt(n)` when both `g -> infinity` and
+`min(m_i) -> infinity`; the block normalization is
+`K_beta = diag(g I_between, n I_within)`. There is no required finite limit
+for `n/g` in that increasing-cluster-size regime. Under bounded cluster sizes,
+`n/g` stays bounded and the usual common `sqrt(g)` regime applies. A true
+three-level theorem requires a specified growth regime for schools, students,
+and occasions; the current `level` option is therefore a practical scaling
+choice, not a completed universal three-level asymptotic result. The note
+also records the sandwich form `A^{-1} B A^{-1}`, the moment/design
+conditions, and references Lyu & Welsh (2022), Jiang (1996, 1998), and Xie &
+Yang (2003).
 
 **Bug fix (2026-09-25):** `resi_pe.lmerMod`'s CS-RESI computation looked up
 a data column literally named after `lme4`'s grouping-factor label (e.g.
