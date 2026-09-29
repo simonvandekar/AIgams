@@ -15,17 +15,11 @@ format:
 This note documents the mathematics behind the `level` argument added to
 `resi_pe.lmerMod()` (`lme4`) and `resi_pe.lme()` (`nlme`) in
 `RESI/R/resi_pe.R`. It explains:
-
-1. how the existing RESI / L-RESI / CS-RESI framework generalizes from a
-   single clustering level (GEE, one random effect) to a chosen level of a
    multi-level nested mixed model (e.g., subject vs. site in a 3-level
    design), and
-2. a hard mathematical constraint on which levels can be validly used with
    a cluster-robust ("sandwich") variance estimator, discovered while
-   implementing this feature.
 
 It draws on the RESI definition in Vandekar, Tao, and Blume (2020) as
-summarized in the RESI package's JSS paper (`notes/v112i03 (3).pdf`,
 Jones, Kang, and Vandekar 2025, Section 2), and the longitudinal L-RESI/
 CS-RESI derivation in `notes/41586_2024_8260_MOESM1_ESM.pdf` (Kang et al.,
 *Nature* 2024, Supplementary Section 3). The two `.tex` files in `notes/`
@@ -138,18 +132,14 @@ $$K_\beta^{1/2}(\hat\beta-\beta),
 \qquad
 K_\beta=\operatorname{diag}\left(gI_{p_b+1},\; nI_{p_w}\right),$$
 
-and
 
 $$K_\beta^{1/2}(\hat\beta-\beta)
-  \overset{d}{\longrightarrow} \mathcal N(0,C_\beta).$$
 
 Thus, approximately,
 
-$$\operatorname{Var}(\hat\beta)
   \approx K_\beta^{-1/2}C_\beta K_\beta^{-1/2}.$$
 
 Between-cluster coefficients and the intercept are therefore $g^{-1/2}$
-parameters, while within-cluster coefficients are $n^{-1/2}$ parameters.
 They are not all normalized by the same number of observations. In the
 special case where cluster sizes remain bounded, $n/g$ is bounded and all
 components are effectively on the $g^{-1/2}$ scale; the separate $n^{-1/2}$
@@ -253,7 +243,104 @@ interpreted as a user-selected scaling convention, with the validity
 restriction in Section 4, rather than as a completed three-level asymptotic
 theorem.
 
-### 3.4 References for these regimes
+### 3.4 Equal within- and between-cluster coefficients: what is the RESI?
+
+Lyu and Welsh parameterize two potentially distinct effects: $\beta_b$ for
+covariates constant between clusters and $\beta_w$ for within-cluster
+deviations. For a single covariate $x_{ij}$, a within/between decomposition
+is
+
+$$x_{ij}=\bar x_i+(x_{ij}-\bar x_i),\qquad
+  y_{ij}=\cdots+\beta_b\bar x_i+\beta_w(x_{ij}-\bar x_i)+\cdots.$$
+
+Here $\beta_b$ compares clusters with different means of $x$, whereas
+$\beta_w$ compares units with different $x$ values **within the same
+cluster**. Equality of their true numeric values does not make these the same
+estimand: they are identified by different sources of design variation and
+have different asymptotic rates.
+
+#### Equal true values, estimated separately
+
+Suppose the unrestricted model is fitted and the true values happen to obey
+$\beta_b=\beta_w=\beta$. Lyu--Welsh still give separate estimators:
+
+$$\sqrt g(\hat\beta_b-\beta_b)\overset{d}{\longrightarrow}N(0,C_b),
+\qquad
+\sqrt n(\hat\beta_w-\beta_w)\overset{d}{\longrightarrow}N(0,C_w),$$
+
+where $C_b$ and $C_w$ are the corresponding covariance blocks in their
+limiting matrix $C$. Under their theorem the between and within blocks are
+asymptotically independent. Thus
+
+$$\operatorname{Var}(\hat\beta_b)\sim C_b/g,
+\qquad
+\operatorname{Var}(\hat\beta_w)\sim C_w/n.$$
+
+For scalar effects, the corresponding RESIs are
+
+$$S_b=\frac{|\beta-\beta_0|}{\sqrt{C_b}},\qquad
+  S_w=\frac{|\beta-\beta_0|}{\sqrt{C_w}}.$$
+
+The signed forms preserve the sign of $\beta-\beta_0$. Equal coefficients
+do not imply equal standard errors or equal RESIs: $C_b$ and $C_w$ encode
+different design information. If the scientific target is whether the
+effects are equal, that is a third question. Under the theorem's block
+independence result,
+
+$$\operatorname{Var}(\hat\beta_b-\hat\beta_w)
+  \sim C_b/g+C_w/n,$$
+
+so a Wald test of $H_0:\beta_b=\beta_w$ is not either level-specific
+RESI.
+
+#### Equality imposed as a model constraint
+
+Alternatively, impose $\beta_b=\beta_w=\gamma$ during fitting. This gives
+one constrained estimator, not two separate estimates that happen to be
+similar. Its score combines information from the between- and
+within-cluster design. Schematically, with asymptotically orthogonal score
+components and scalar information contributions $J_b,J_w>0$,
+
+$$\operatorname{Var}(\hat\gamma)\approx(gJ_b+nJ_w)^{-1}.$$
+
+This is an information-order illustration, not a general Lyu--Welsh
+formula for a constrained fit. If $n/g\to\infty$ and within-cluster
+information is nonzero, the within contribution may dominate and the
+constrained estimator may have a $\sqrt n$ rate; if $n/g$ remains bounded,
+both contributions may be of order $g$ and the rate may be $\sqrt g$.
+The exact normalization depends on the constrained estimating equations,
+covariance model, and design. A RESI for $\gamma$ must use the covariance
+and normalization of this constrained estimator; it is not an average of
+$S_b$ and $S_w$.
+
+#### Contrast with L-RESI and CS-RESI
+
+L-RESI and CS-RESI distinguish **two covariance targets for the same
+marginal regression parameter**: L-RESI accounts for longitudinal
+dependence; CS-RESI uses the covariance for the counterfactual
+cross-sectional design with one measurement per participant. In contrast,
+$\beta_b$ and $\beta_w$ are different parameters tied to between- and
+within-cluster covariate variation. Therefore:
+
+- Equal true values of $\beta_b$ and $\beta_w$ do not make their separate
+  RESIs equal and do not turn either into CS-RESI.
+- CS-RESI is not generally a within-cluster RESI. Its reference design
+  samples one row per participant; a within-cluster effect is identified
+  from deviations among units inside clusters and has its own information
+  and asymptotic rate.
+- L-RESI is not automatically a between-cluster RESI. It uses the
+  longitudinal covariance for its target marginal coefficient; a
+  between-cluster coefficient's information is driven by the number and
+  design of independent clusters.
+
+**Takeaway:** specify the scientific target first: a between-cluster effect,
+a within-cluster effect, a test that those effects are equal, or one
+constrained common slope. Then derive the covariance and normalization for
+that estimator. The Lyu--Welsh theorem handles the first two separately;
+it does not imply that equality of their true coefficients merges their
+RESIs.
+
+### 3.5 References for these regimes
 
 - Lyu, Z. and Welsh, A. H. (2022). *Increasing cluster size asymptotics for
   nested error regression models*. Journal of Statistical Planning and
