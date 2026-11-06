@@ -1,0 +1,174 @@
+nohup: ignoring input
+ℹ Loading RESI
+Registered S3 method overwritten by 'clubSandwich':
+  method    from    
+  bread.mlm sandwich
+Registered S3 method overwritten by 'lme4':
+  method           from
+  na.action.merMod car 
+=== Real-data Model A fit (used as simulation DGP) ===
+ (Intercept)         year   femaleMale       black1    hispanic1     size_100 
+ 0.246335091  0.746434636 -0.002850076 -0.511427768 -0.286735335 -0.010885679 
+   lowinc_10 
+-0.079569603 
+ Groups           Name        Std.Dev.
+ childid:schoolid (Intercept) 0.80741 
+ schoolid         (Intercept) 0.28076 
+ Residual                     0.58902 
+school BLUP pool: n = 60  mean = 3.933169e-18  var = 0.07882424 
+child BLUP pool: n = 1721  mean = 1.906126e-17  var = 0.6519162 
+Running hybrid plasmode (BLUP-resampled random effects) calibration check for Model A ...
+
+=== Fixed effects: se_ratio by n_schools (hybrid plasmode, Model A) ===
+             param se_ratio.15 se_ratio.30 se_ratio.60 se_ratio.90 se_ratio.120
+1 beta_(Intercept)       0.850       0.914       0.948       1.002        0.990
+2        beta_year       0.979       0.988       1.026       1.025        0.998
+3  beta_femaleMale       0.971       0.974       0.987       0.982        1.034
+4      beta_black1       0.959       0.972       1.002       0.986        0.960
+5   beta_hispanic1       0.956       0.971       1.006       1.022        0.967
+6    beta_size_100       0.869       0.929       0.963       0.959        1.002
+7   beta_lowinc_10       0.865       0.937       0.950       0.982        0.981
+
+=== Variance components: relative bias (%) by n_schools ===
+                              param rel_bias_pct.15 rel_bias_pct.30
+8  var_childid:schoolid_(Intercept)          0.8803           0.676
+9          var_schoolid_(Intercept)         33.3418          18.401
+10                     var_Residual         -0.0797           0.160
+   rel_bias_pct.60 rel_bias_pct.90 rel_bias_pct.120
+8           0.1235          0.0798          0.28972
+9           9.4685          6.7635          4.96702
+10         -0.0682         -0.0476         -0.00184
+
+=== RESI calibration: full-data reference vs Monte Carlo ===
+ n_schools        table        term                     variation_level
+        15 coefficients (Intercept)                   overall/intercept
+        15 coefficients        year observation within childid:schoolid
+        15 coefficients  femaleMale                    childid:schoolid
+        15 coefficients      black1                    childid:schoolid
+        15 coefficients   hispanic1                    childid:schoolid
+        15 coefficients    size_100                            schoolid
+        15 coefficients   lowinc_10                            schoolid
+        15        anova        year observation within childid:schoolid
+        15        anova      female                    childid:schoolid
+        15        anova       black                    childid:schoolid
+        15        anova    hispanic                    childid:schoolid
+        15        anova    size_100                            schoolid
+        15        anova   lowinc_10                            schoolid
+        30 coefficients (Intercept)                   overall/intercept
+        30 coefficients        year observation within childid:schoolid
+        30 coefficients  femaleMale                    childid:schoolid
+        30 coefficients      black1                    childid:schoolid
+        30 coefficients   hispanic1                    childid:schoolid
+        30 coefficients    size_100                            schoolid
+        30 coefficients   lowinc_10                            schoolid
+        30        anova        year observation within childid:schoolid
+        30        anova      female                    childid:schoolid
+        30        anova       black                    childid:schoolid
+        30        anova    hispanic                    childid:schoolid
+        30        anova    size_100                            schoolid
+        30        anova   lowinc_10                            schoolid
+        60 coefficients (Intercept)                   overall/intercept
+        60 coefficients        year observation within childid:schoolid
+        60 coefficients  femaleMale                    childid:schoolid
+        60 coefficients      black1                    childid:schoolid
+        60 coefficients   hispanic1                    childid:schoolid
+        60 coefficients    size_100                            schoolid
+        60 coefficients   lowinc_10                            schoolid
+        60        anova        year observation within childid:schoolid
+        60        anova      female                    childid:schoolid
+        60        anova       black                    childid:schoolid
+        60        anova    hispanic                    childid:schoolid
+        60        anova    size_100                            schoolid
+        60        anova   lowinc_10                            schoolid
+        90 coefficients (Intercept)                   overall/intercept
+        90 coefficients        year observation within childid:schoolid
+        90 coefficients  femaleMale                    childid:schoolid
+        90 coefficients      black1                    childid:schoolid
+        90 coefficients   hispanic1                    childid:schoolid
+        90 coefficients    size_100                            schoolid
+        90 coefficients   lowinc_10                            schoolid
+        90        anova        year observation within childid:schoolid
+        90        anova      female                    childid:schoolid
+        90        anova       black                    childid:schoolid
+        90        anova    hispanic                    childid:schoolid
+        90        anova    size_100                            schoolid
+        90        anova   lowinc_10                            schoolid
+       120 coefficients (Intercept)                   overall/intercept
+       120 coefficients        year observation within childid:schoolid
+       120 coefficients  femaleMale                    childid:schoolid
+       120 coefficients      black1                    childid:schoolid
+       120 coefficients   hispanic1                    childid:schoolid
+       120 coefficients    size_100                            schoolid
+       120 coefficients   lowinc_10                            schoolid
+       120        anova        year observation within childid:schoolid
+       120        anova      female                    childid:schoolid
+       120        anova       black                    childid:schoolid
+       120        anova    hispanic                    childid:schoolid
+       120        anova    size_100                            schoolid
+       120        anova   lowinc_10                            schoolid
+          n_level    n truth_resi mc_mean_resi bias_resi mc_sd_resi
+ childid:schoolid  420    0.04046      0.04017  2.90e-04     0.0521
+ childid:schoolid  420    3.33625      3.46395 -1.28e-01     0.8158
+ childid:schoolid  420   -0.00164     -0.00206  4.25e-04     0.0526
+ childid:schoolid  420   -0.15490     -0.14518 -9.73e-03     0.0594
+ childid:schoolid  420   -0.07832     -0.08150  3.17e-03     0.0587
+         schoolid   15   -0.09850     -0.09121 -7.29e-03     0.2612
+         schoolid   15   -0.58612     -0.50393 -8.22e-02     0.3001
+ childid:schoolid  420    3.33617      3.46359 -1.27e-01     0.8159
+ childid:schoolid  420    0.00000      0.01926 -1.93e-02     0.0346
+ childid:schoolid  420    0.15302      0.13470  1.83e-02     0.0641
+ childid:schoolid  420    0.07452      0.06524  9.28e-03     0.0622
+         schoolid   15    0.00000      0.09644 -9.64e-02     0.1846
+         schoolid   15    0.57172      0.41747  1.54e-01     0.3327
+ childid:schoolid  844    0.04046      0.04201 -1.55e-03     0.0362
+ childid:schoolid  844    3.33625      3.41241 -7.62e-02     0.5463
+ childid:schoolid  844   -0.00164     -0.00227  6.32e-04     0.0356
+ childid:schoolid  844   -0.15490     -0.16034  5.43e-03     0.0479
+ childid:schoolid  844   -0.07832     -0.08079  2.46e-03     0.0397
+         schoolid   30   -0.09850     -0.09354 -4.96e-03     0.1883
+         schoolid   30   -0.58612     -0.63865  5.25e-02     0.2449
+ childid:schoolid  844    3.33617      3.41223 -7.61e-02     0.5464
+ childid:schoolid  844    0.00000      0.01268 -1.27e-02     0.0225
+ childid:schoolid  844    0.15302      0.15620 -3.19e-03     0.0492
+ childid:schoolid  844    0.07452      0.07105  3.47e-03     0.0440
+         schoolid   30    0.00000      0.08285 -8.29e-02     0.1371
+         schoolid   30    0.57172      0.60648 -3.48e-02     0.2584
+ childid:schoolid 1721    0.04046      0.04045  1.43e-05     0.0252
+ childid:schoolid 1721    3.33625      3.33847 -2.21e-03     0.3769
+ childid:schoolid 1721   -0.00164     -0.00136 -2.82e-04     0.0247
+ childid:schoolid 1721   -0.15490     -0.15675  1.85e-03     0.0330
+ childid:schoolid 1721   -0.07832     -0.07974  1.41e-03     0.0267
+         schoolid   60   -0.09850     -0.10979  1.13e-02     0.1333
+         schoolid   60   -0.58612     -0.58323 -2.89e-03     0.1588
+ childid:schoolid 1721    3.33617      3.33838 -2.21e-03     0.3769
+ childid:schoolid 1721    0.00000      0.00890 -8.90e-03     0.0150
+ childid:schoolid 1721    0.15302      0.15480 -1.78e-03     0.0334
+ childid:schoolid 1721    0.07452      0.07529 -7.66e-04     0.0287
+         schoolid   60    0.00000      0.08184 -8.18e-02     0.1126
+         schoolid   60    0.57172      0.56746  4.26e-03     0.1634
+ childid:schoolid 2565    0.04046      0.04098 -5.20e-04     0.0194
+ childid:schoolid 2565    3.33625      3.35631 -2.01e-02     0.3114
+ childid:schoolid 2565   -0.00164     -0.00153 -1.11e-04     0.0201
+ childid:schoolid 2565   -0.15490     -0.15739  2.48e-03     0.0265
+ childid:schoolid 2565   -0.07832     -0.07908  7.58e-04     0.0217
+         schoolid   90   -0.09850     -0.09796 -5.34e-04     0.1100
+         schoolid   90   -0.58612     -0.60441  1.83e-02     0.1300
+ childid:schoolid 2565    3.33617      3.35625 -2.01e-02     0.3114
+ childid:schoolid 2565    0.00000      0.00718 -7.18e-03     0.0123
+ childid:schoolid 2565    0.15302      0.15611 -3.09e-03     0.0267
+ childid:schoolid 2565    0.07452      0.07631 -1.78e-03     0.0227
+         schoolid   90    0.00000      0.07425 -7.43e-02     0.0932
+         schoolid   90    0.57172      0.59468 -2.30e-02     0.1321
+ childid:schoolid 3442    0.04046      0.04114 -6.79e-04     0.0174
+ childid:schoolid 3442    3.33625      3.33194  4.31e-03     0.2612
+ childid:schoolid 3442   -0.00164     -0.00183  1.92e-04     0.0166
+ childid:schoolid 3442   -0.15490     -0.15496  5.17e-05     0.0228
+ childid:schoolid 3442   -0.07832     -0.07773 -5.94e-04     0.0188
+         schoolid  120   -0.09850     -0.09814 -3.53e-04     0.0919
+         schoolid  120   -0.58612     -0.59472  8.61e-03     0.1119
+ childid:schoolid 3442    3.33617      3.33190  4.27e-03     0.2612
+ childid:schoolid 3442    0.00000      0.00536 -5.36e-03     0.0103
+ childid:schoolid 3442    0.15302      0.15399 -9.78e-04     0.0229
+ childid:schoolid 3442    0.07452      0.07570 -1.17e-03     0.0194
+         schoolid  120    0.00000      0.07208 -7.21e-02     0.0848
+         schoolid  120    0.57172      0.58740 -1.57e-02     0.1134

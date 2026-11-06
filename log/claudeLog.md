@@ -589,4 +589,129 @@ distributed -- source for the random effects.
 
 ---
 
+## Session 8 — 2026-09-29
+
+### Request
+Implement term-specific mixed-model RESI normalization with a separate robust
+covariance cluster; archive the former mixed L-/CS-RESI methods outside package
+builds; run the hybrid calibration grids with the metrics in Goal 5a.
+
+### Actions and checks
+- Added active `resi_pe.lmerMod`/`resi_pe.lme` methods with inferred per-term
+  `n`, optional global/named overrides, separate `cluster`, and coefficient/
+  ANOVA metadata for `Variation level` and `n level`. Archived the former
+  mixed paired methods under explicitly deprecated names in a directory
+  excluded from source-package builds.
+- Updated Goal 2/5a and the mathematical note to describe the active API and
+  distinguish normalization from covariance clustering. The note now renders
+  to standalone HTML.
+- Focused mixed-scale tests pass (29 assertions); existing `test-resi.R`
+  passes (77 assertions). Some optional Suggests packages are unavailable in
+  the environment, producing expected namespace-load messages but no test
+  failures. `R CMD build --no-build-vignettes --no-manual` succeeds; tarball
+  includes the new mixed estimator and test, not `deprecated/`.
+- A first hybrid target used robust covariance on the heterogeneous real
+  outcome and did not match the hybrid DGP. Corrected both scripts to use the
+  fitted DGP's model-based RESI as truth (`stats::vcov`); generated replicates
+  continue to use robust covariance clustered by school. Both 1000-replicate
+  grids are running; final calibration results and report rendering remain
+  pending.
+
+## Simulation extension - 2026-10-05
+
+Added `(n_schools, n_per_site) = (100, 25)` and `(200, 25)` to the joint
+hybrid calibration. The design cycles observed school covariate profiles
+beyond 60 schools and assigns unique generated school/student IDs, retaining
+fresh random effects and residual errors. ML fits, `stats::vcov`, and common
+student-level normalization (`level = 2`) are unchanged.
+
+Both added conditions passed two-replicate smoke tests, including checks for
+100/200 distinct schools and 2500/5000 distinct students. The production run
+uses 1000 replicates per added condition and writes separate large-school
+summary files before merging with the existing 12-cell results. The figure
+layout now derives its school-count columns dynamically, retaining four
+rows and shared y-axis limits within each row. The report documents the
+sparse extension and leaves unrun table combinations blank.
+
+Both production conditions completed with 1000 successful fits and 1000
+finite RESI estimates per term. Student counts are 2500 and 5000. The
+additional fixed-effect SE ratios range from 0.946 to 1.067. Validated
+full-data RESI reference equality before merging; preserved every original
+summary row. Combined output has 140 parameter rows and 182 RESI rows across
+14 cells. Regenerated and visually checked the five-column PDF/PNG figure
+and rebuilt the HTML report with the expanded tables. Also corrected the
+variance-row axis limits to use only variance-component relative biases.
+
+### Larger site sizes at 100 and 200 schools - 2026-10-05
+
+Requested four further conditions: `(100,100)`, `(200,100)`, `(100,200)`, and
+`(200,200)`, retaining the ML/model-based estimator and student normalization.
+All four passed two-replicate smoke tests with successful fits and correct
+student counts (10000, 20000, 20000, and 40000). The default driver grid now
+contains 18 cells. Updated report descriptions and instructions accordingly.
+
+Ran 1000 replicates per new condition using 24 workers. The separate outputs
+are `tests/hybrid_plasmode_large_sites_summary.rds` and
+`tests/hybrid_plasmode_large_sites_resi_summary.rds`; the completed log is
+`run_hybrid_large_sites.log`. All four cells have 1000 successful fits,
+correct student counts, and full-data RESI targets identical to existing
+cells. The chained post-run command stopped on a strict data-frame comparison
+that included row names; after normalizing row names, merged the new rows and
+verified every original row was preserved. Combined summaries now cover 18
+cells (180 parameter rows, 234 RESI rows). Regenerated and checked the
+five-column figure and `resiLongCalibrationSim/calibration_report.html`.
+
+### Hierarchical covariate bootstrap and REML refits - 2026-10-06
+
+Replaced deterministic/cyclic covariate designs with a two-stage bootstrap:
+sample schools with replacement, then sample students with replacement
+within each selected source school, retaining each student's full repeated-
+measure profile and assigning new school/student IDs. The per-school student
+draw count is rounded from `n_per_site * source_school_size / mean_source-
+school_size`, giving an expected average near `n_per_site`. Outcomes are
+regenerated using the full-sample ML Model A fixed effects, centered and
+rescaled school/student BLUP pools, and fresh Normal residuals. Replicate
+fits use REML, with model-based `stats::vcov`; the full-sample ML fit remains
+the generating fit and RESI reference.
+
+The production grid is `n_schools = {15,30,60,100}` crossed with
+`n_per_site = {25,100,200}` (12 cells). Excluded `n_schools=200` and
+`n_per_site=50` as requested. Reproducible parallel RNG uses
+`RNGkind("L'Ecuyer-CMRG")`, `set.seed(2026)`, and `mc.set.seed=TRUE`.
+The output is separate from the prior fixed-covariate analysis:
+`tests/hybrid_plasmode_resampled_covariates_summary.rds` and
+`tests/hybrid_plasmode_resampled_covariates_resi_summary.rds`. The report
+figure now has a third row comparing mean REML coefficient SEs with their
+Monte Carlo SDs; RESI summary rows report the mean and SD of realized
+student counts.
+
+Smoke-validated the new bootstrap design on `(15,25)` and `(100,100)` with
+three replicates each: REML refits and generated IDs succeeded, realized
+student counts were near the requested per-site averages, and summaries
+include mean/SD realized `n`. Rendered the five-row figure (SE ratio, variance
+component bias, mean coefficient SE vs. MC SD, RESI coefficient bias, RESI
+ANOVA bias) and smoke-rendered the report with the fixed-effect mean/bias
+table. The production 12-cell run completed with `nsim=1000` and 1000
+successful fits in every cell. The summary files contain 120 model-parameter
+rows and 156 coefficient/ANOVA RESI rows. Realized student counts averaged
+within 7.11 students of `n_schools * n_per_site`; coefficient SE ratios range
+from 0.916 to 1.040; mean absolute coefficient bias is 0.00130 and mean
+absolute RESI bias is 0.01065. Regenerated the five-row plot and final
+self-contained `resiLongCalibrationSim/calibration_report.html`, verifying
+the embedded plot, REML description, sample-size SD column, and SE-vs-MC-SD
+row.
+
+### Fixed ML standard-error reference in third plot row - 2026-10-06
+
+Clarified that the third-row SE reference is fixed from the full-sample ML
+fit, not from REML replicate fits. The row plots each coefficient's Monte
+Carlo error SD, scaled by the planned school/student count, as a ratio to
+the corresponding full-sample ML SE scaled by the full-sample count.
+Intercept/school terms use school counts; student/time terms use
+`n_schools * n_per_site`. Dashed colored curves show the scaled error/SE
+ratios; the solid horizontal line at 1 is the fixed full-sample reference.
+Derived these metrics from the completed MC SDs and a refit of the full-
+sample ML model; the simulations were not rerun. Rebuilt the figure and HTML
+report.
+
 

@@ -1,12 +1,40 @@
 # [AI-generated: Claude Sonnet 5 via GitHub Copilot, 2026-09-24]
-# [Prompt summary: hybrid plasmode follow-up to test_egsingle_hybrid_plasmode.R
-#  -- same fixed-n_per_site deterministic design as
-#  test_egsingle_synthetic_fixed_n.R, but the school and child random
-#  intercepts are drawn by resampling WITH REPLACEMENT from the model's
-#  rescaled BLUPs (mean zero, variance equal to the fitted variance
-#  component) instead of a Normal distribution.]
+# [Prompt summary: hierarchical with-replacement covariate resampling of
+#  schools and students, fresh BLUP-pool random effects and residuals, and
+#  REML refits for the joint n_schools by n_per_site calibration.]
 
 devtools::load_all("/media/alsobig/AIgams/RESI")
+
+.hybridResiCalibrationSummary <- function(reps, truth_resi, settings) {
+  sources <- list(
+    coefficients = list(rep_name = "resi_coef", truth = truth_resi$coefficients),
+    anova = list(rep_name = "resi_anova", truth = truth_resi$anova)
+  )
+  do.call(rbind, unlist(lapply(names(sources), function(table_name) {
+    source <- sources[[table_name]]
+    terms <- rownames(source$truth)
+    lapply(terms, function(term) {
+      values <- vapply(reps, function(rep) rep[[source$rep_name]][term, "RESI"], numeric(1L))
+      first <- reps[[1L]][[source$rep_name]][term, , drop = FALSE]
+      replicate_n <- vapply(reps, function(rep) {
+        rep[[source$rep_name]][term, "n"]
+      }, numeric(1L))
+      data.frame(
+        as.list(settings), table = table_name, term = term,
+        n = mean(replicate_n), n_sd = stats::sd(replicate_n),
+        variation_level = first$`Variation level`,
+        n_level = first$`n level`,
+        truth_resi = source$truth[term, "RESI"],
+        mc_mean_resi = mean(values, na.rm = TRUE),
+        bias_resi = source$truth[term, "RESI"] - mean(values, na.rm = TRUE),
+        mc_sd_resi = stats::sd(values, na.rm = TRUE),
+        mc_se_resi = stats::sd(values, na.rm = TRUE) / sqrt(sum(is.finite(values))),
+        n_success = sum(is.finite(values)),
+        check.names = FALSE, row.names = NULL
+      )
+    })
+  }), recursive = FALSE))
+}
 
 egsingle <- local({
   e <- new.env()
@@ -32,6 +60,10 @@ print(lme4::VarCorr(truth_fit))
 # Known-truth params are the fitted Model A population parameters.
 true_params <- RESI:::.longSimExtractParams(truth_fit)
 true_fe_se  <- RESI:::.longSimExtractFeSe(truth_fit)
+# The full-sample ML fit defines the model-based RESI reference. Replicate
+# fits use REML, as requested, with the same model-based covariance method.
+truth_resi  <- RESI::resi_pe(truth_fit, anova = TRUE,
+                              vcovfunc = stats::vcov, level = 2)
 
 vc <- as.data.frame(lme4::VarCorr(truth_fit))
 school_var <- vc$vcov[vc$grp == "schoolid" & is.na(vc$var2)]
@@ -52,22 +84,30 @@ cat("school BLUP pool: n =", length(school_pool),
 cat("child BLUP pool: n =", length(child_pool),
     " mean =", mean(child_pool), " var =", stats::var(child_pool), "\n")
 
-# Fixed covariate design with exactly n_per_site child profiles per site; only
-# the random effects (resampled from BLUPs) and residuals vary by replicate.
+# Resample schools and then students within each selected school. The number
+# sampled per school is proportional to its observed size and scaled so the
+# expected average is n_per_site.
+school_child_counts <- vapply(levels(egsingle$schoolid), function(school) {
+  length(unique(egsingle$childid[egsingle$schoolid == school]))
+}, integer(1L))
+mean_site_size <- mean(school_child_counts)
 fixed_design <- function(n_schools, n_per_site) {
-  source_schools <- levels(egsingle$schoolid)[seq_len(n_schools)]
-  out <- lapply(seq_along(source_schools), function(s) {
+  school_profiles <- levels(egsingle$schoolid)
+  source_schools <- sample(school_profiles, n_schools, replace = TRUE)
+  out <- lapply(seq_len(n_schools), function(s) {
     source_rows <- egsingle[egsingle$schoolid == source_schools[s], , drop = FALSE]
     child_ids <- unique(source_rows$childid)
-    selected_children <- child_ids[((seq_len(n_per_site) - 1L) %% length(child_ids)) + 1L]
+    n_sampled_children <- max(1L, as.integer(round(
+      n_per_site * length(child_ids) / mean_site_size)))
+    selected_children <- sample(child_ids, n_sampled_children, replace = TRUE)
     child_rows <- lapply(selected_children, function(child_id) {
       source_rows[source_rows$childid == child_id, , drop = FALSE]
     })
     rows <- do.call(rbind, child_rows)
     rows$schoolid <- factor(s)
-    rows$childid <- factor(rep(paste0(s, "_", seq_len(n_per_site)),
+    rows$childid <- factor(rep(paste0(s, "_", seq_len(n_sampled_children)),
                    vapply(child_rows, nrow, integer(1L))),
-                           levels = paste0(s, "_", seq_len(n_per_site)))
+                           levels = paste0(s, "_", seq_len(n_sampled_children)))
     rows
   })
   out <- do.call(rbind, out)
@@ -85,14 +125,18 @@ generate_outcome <- function(design) {
     rnorm(nrow(design), sd = resid_sd)
 }
 
-n_schools.vec  <- c(15, 30, 60)
-n_per_site.vec <- c(25, 50, 100, 200)
-grid <- expand.grid(n_schools = n_schools.vec, n_per_site = n_per_site.vec)
-nsim <- 1000L
-mc.cores.reps <- 24L
+n_schools.vec  <- getOption("resi.n_schools", c(15, 30, 60, 100))
+n_per_site.vec <- getOption("resi.n_per_site", c(25, 100, 200))
+grid <- getOption("resi.grid", expand.grid(
+  n_schools = n_schools.vec, n_per_site = n_per_site.vec
+))
+nsim <- getOption("resi.nsim", 1000L)
+mc.cores.reps <- getOption("resi.mc.cores.reps", 24L)
 
+RNGkind("L'Ecuyer-CMRG")
 set.seed(2026)
-message("Running hybrid plasmode fixed-n_per_site calibration check for Model A ...")
+message("Running hierarchical covariate-bootstrap REML calibration for Model A ...")
+resi_rows <- vector("list", nrow(grid))
 rows <- lapply(seq_len(nrow(grid)), function(g) {
   n_schools  <- grid$n_schools[g]
   n_per_site <- grid$n_per_site[g]
@@ -102,12 +146,18 @@ rows <- lapply(seq_len(nrow(grid)), function(g) {
     samp$math <- generate_outcome(samp)
     fit <- tryCatch(
       suppressWarnings(suppressMessages(
-        lme4::lmer(form_A, data = samp, REML = FALSE, control = ctrl))),
+        lme4::lmer(form_A, data = samp, REML = TRUE, control = ctrl))),
       error = function(e) NULL)
     if (is.null(fit)) return(NULL)
+      point <- RESI::resi_pe(fit, anova = TRUE,
+                   vcovfunc = stats::vcov, level = 2)
     list(params = RESI:::.longSimExtractParams(fit),
-         fe_se  = RESI:::.longSimExtractFeSe(fit))
-  }, mc.cores = mc.cores.reps)
+          fe_se  = RESI:::.longSimExtractFeSe(fit),
+          n_schools = nlevels(samp$schoolid),
+          n_students = nlevels(samp$childid),
+          resi_coef = point$coefficients,
+          resi_anova = point$anova)
+  }, mc.cores = mc.cores.reps, mc.set.seed = TRUE)
 
   reps <- Filter(Negate(is.null), reps_raw)
   n_success <- length(reps)
@@ -123,6 +173,21 @@ rows <- lapply(seq_len(nrow(grid)), function(g) {
   colnames(fe_se_mat) <- fe_names
   mean_model_se <- colMeans(fe_se_mat, na.rm = TRUE)
 
+  school_level_terms <- c("beta_(Intercept)", "beta_size_100", "beta_lowinc_10")
+  n_reference <- setNames(ifelse(
+    fe_names %in% school_level_terms,
+    nlevels(egsingle$schoolid), length(unique(egsingle$childid))), fe_names)
+  se_level <- setNames(ifelse(fe_names %in% school_level_terms,
+                              "schools", "students"), fe_names)
+  n_scaling <- setNames(ifelse(fe_names %in% school_level_terms,
+                               n_schools, n_schools * n_per_site), fe_names)
+  truth_se_scaled <- true_fe_se[fe_names] * sqrt(n_reference[fe_names])
+  mc_error_sd_scaled <- mc_sd[fe_names] * sqrt(n_scaling[fe_names])
+  scaled_mc_error_sd_ratio <- mc_error_sd_scaled / truth_se_scaled
+
+  resi_rows[[g]] <<- .hybridResiCalibrationSummary(
+    reps, truth_resi, list(n_schools = n_schools, n_per_site = n_per_site))
+
   is_fe <- param_names %in% fe_names
   data.frame(
     n_schools     = n_schools,
@@ -135,13 +200,21 @@ rows <- lapply(seq_len(nrow(grid)), function(g) {
     mc_sd         = mc_sd[param_names],
     mean_model_se = ifelse(is_fe, mean_model_se[param_names], NA_real_),
     se_ratio      = ifelse(is_fe, mean_model_se[param_names] / mc_sd[param_names], NA_real_),
+    se_n_level    = unname(se_level[param_names]),
+    n_reference   = unname(n_reference[param_names]),
+    n_scaling     = unname(n_scaling[param_names]),
+    truth_se_scaled = unname(truth_se_scaled[param_names]),
+    mc_error_sd_scaled = unname(mc_error_sd_scaled[param_names]),
+    scaled_mc_error_sd_ratio = unname(scaled_mc_error_sd_ratio[param_names]),
     row.names     = NULL,
     stringsAsFactors = FALSE
   )
 })
 
 summary_table <- do.call(rbind, rows)
-saveRDS(summary_table, file = "tests/hybrid_plasmode_fixed_n_summary.rds")
+saveRDS(summary_table, file = getOption("resi.output.summary", "tests/hybrid_plasmode_resampled_covariates_summary.rds"))
+resi_summary <- do.call(rbind, resi_rows)
+saveRDS(resi_summary, file = getOption("resi.output.resi_summary", "tests/hybrid_plasmode_resampled_covariates_resi_summary.rds"))
 
 cat("\n=== Fixed effects: se_ratio by (n_schools, n_per_site), hybrid plasmode Model A ===\n")
 fe <- summary_table[grepl("^beta_", summary_table$param), ]
@@ -163,3 +236,8 @@ for (p in unique(vc2$param)) {
                      idvar = "n_schools", timevar = "n_per_site", direction = "wide")
   print(widevc, digits = 3)
 }
+
+cat("\n=== RESI calibration: full-data reference vs Monte Carlo ===\n")
+print(resi_summary[, c("n_schools", "n_per_site", "table", "term",
+                       "variation_level", "n_level", "n", "truth_resi", "mc_mean_resi",
+                       "bias_resi", "mc_sd_resi")], row.names = FALSE, digits = 3)

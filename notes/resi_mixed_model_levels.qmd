@@ -1,30 +1,41 @@
 ---
-title: "RESI at a chosen grouping level for mixed models"
-subtitle: "Mathematical basis for the `level` argument to `resi_pe.lmerMod()`/`resi_pe.lme()`"
+title: "Level-based RESI normalization for mixed models"
+subtitle: "Mathematical basis for the `n` and `level` arguments to `resi_pe.lmerMod()`/`resi_pe.lme()`"
 author: "RESI package project notes"
 date: 2026-09-25
 format:
   html:
     toc: true
     number-sections: true
-    embed-resources: true
 ---
 
 ## Purpose
 
-This note documents the mathematics behind the `level` argument added to
-`resi_pe.lmerMod()` (`lme4`) and `resi_pe.lme()` (`nlme`) in
-`RESI/R/resi_pe.R`. It explains:
-   multi-level nested mixed model (e.g., subject vs. site in a 3-level
-   design), and
-   a cluster-robust ("sandwich") variance estimator, discovered while
+This note documents common level-based RESI normalization for `lmerMod`
+(`lme4`) and `lme` (`nlme`) models. The current interface uses:
 
-It draws on the RESI definition in Vandekar, Tao, and Blume (2020) as
-Jones, Kang, and Vandekar 2025, Section 2), and the longitudinal L-RESI/
-CS-RESI derivation in `notes/41586_2024_8260_MOESM1_ESM.pdf` (Kang et al.,
-*Nature* 2024, Supplementary Section 3). The two `.tex` files in `notes/`
-(`Manuscript_revision.tex`, `supplement.tex`) concern the asymptotic
-(non-bootstrap) confidence interval derivation and are not used here.
+- `n`: the normalizing count used to convert each coefficient/term Wald
+  statistic into a RESI; one selected count is used for every coefficient and
+  ANOVA term;
+- `level`: the random-effect hierarchy level whose group count supplies the
+  common `n`, ordered from outermost to innermost grouping. For `egsingle`,
+  school is level 1 and student is level 2. If omitted, level 1 is selected
+  with a message naming the grouping factor.
+
+The coefficient and ANOVA tables can report both the literal `Variation
+level` (where the fixed-effect design changes) and the `n level` (which
+independent units are counted). For example, `year` changes across
+measurement occasions within a student, so its variation level is the
+observation-within-student level. With `level = 2`, its normalizer, like all
+other terms, counts students. This choice is important: it encodes the
+assumed asymptotic sampling unit for the model as a whole.
+
+The note also covers the mathematical constraint on valid cluster-robust
+covariance for nested random effects. It draws on the RESI definition in
+Vandekar, Tao, and Blume (2020), as summarized in the JSS paper, and the
+L-RESI/CS-RESI derivation in Kang et al. (2024). The two `.tex` files in
+`notes/` concern asymptotic confidence intervals and are not used here.
+
 
 ## 1. The RESI and its estimators (single-level case)
 
@@ -49,10 +60,17 @@ $$\hat S_\beta = \sqrt{\max\left(0, \frac{T^2 - m_1}{n}\right)}, \qquad
 
 The RESI is "robust" because $\hat S_\beta$ remains consistent when
 $\Sigma_\beta$ is estimated with a **heteroskedasticity/cluster-robust**
-("sandwich") covariance instead of the naive model-based one. **The choice
-of $n$ and the choice of variance estimator are not independent**: $n$ must
-be the number of units that the variance estimator treats as independent
-replicates. This coupling is the source of everything below.
+("sandwich") covariance instead of the naive model-based one. The arguments
+`n` and `cluster` play different roles: `n` is the asymptotic normalization
+rate for the target estimator, while `cluster` specifies how the covariance
+estimator allows dependence. In the standard fixed-cluster-size sandwich
+regime, that rate is usually the number of independent clusters. In
+multilevel models, however, within-level and between-level coefficients can
+have different rates (Section 3), and a coarser robust cluster can still be
+used for a coefficient whose information grows at a finer level. Thus the
+two choices need not be numerically identical, but their compatibility must
+be justified by the assumed model and asymptotic regime; `n` is not inferred
+from the cluster argument alone.
 
 ## 2. Generalizing to clustered/longitudinal data (L-RESI, CS-RESI)
 
@@ -79,9 +97,12 @@ model on the same data with each row weighted by $1/n_i$ (down-weighting
 participants with more repeated measurements to emulate one draw per
 participant) and taking its HC0 sandwich variance. **Both L-RESI and
 CS-RESI use the same $N$** (the number of participants) -- only the variance
-estimator differs. This is implemented in `RESI/R/resi_pe.R` for `geeglm`/
-`gee` models, and (before this change) for `lmerMod`/`lme` with $N$ always
-taken from a single, fixed grouping factor.
+estimator differs. The GEE methods retain these L-RESI/CS-RESI definitions.
+The former mixed-model L-/CS-RESI methods are archived under
+`RESI/deprecated/` and excluded from package builds. The active `lmerMod`/
+`lme` methods instead return one RESI per coefficient and ANOVA term using a
+single common normalizer selected by `level`; they do not label the result
+L-RESI or CS-RESI.
 
 ## 3. What changes with more than one clustering level
 
@@ -103,11 +124,10 @@ $$D_N(\hat\beta-\beta) \;\overset{d}{\longrightarrow}\;
   \mathcal N(0,\,C_\beta),$$
 
 where $D_N$ may be scalar or block-diagonal, rather than necessarily
-$\sqrt{N_k}I$. The RESI normalization must use the same $D_N$ that governs
-the covariance estimator being used. The `level` argument is therefore a
-practical choice of an independent-cluster scale for the current
-cluster-robust implementation, not a claim that every grouping level has a
-valid standalone mixed-model asymptotic distribution.
+$\sqrt{N_k}I$. The active mixed-model API therefore accepts one common
+normalizing count `n`, selected by the random-effect hierarchy argument
+`level`. This is a practical, explicit asymptotic sampling-unit convention,
+not a claim that every grouping level has a standalone mixed-model limit.
 
 CS-RESI generalizes the same way: reweight rows by $1/n_i^{(k)}$, where
 $n_i^{(k)}$ is the number of rows belonging to level-$k$ unit $i$ (e.g.,
@@ -128,19 +148,20 @@ Lyu and Welsh (2022) show that, when both the number of clusters and the
 minimum cluster size increase, the natural normalization for the regression
 parameters is
 
-$$K_\beta^{1/2}(\hat\beta-\beta),
+$$K_\beta^{1/2}(\hat\beta-\beta) \overset{d}{\longrightarrow}
+  \mathcal N(0,C_\beta),
 \qquad
-K_\beta=\operatorname{diag}\left(gI_{p_b+1},\; nI_{p_w}\right),$$
-
-
-$$K_\beta^{1/2}(\hat\beta-\beta)
+K_\beta=\operatorname{diag}\left(gI_{p_b+1},\; nI_{p_w}\right).$$
 
 Thus, approximately,
 
+$$\operatorname{Var}(\hat\beta)
   \approx K_\beta^{-1/2}C_\beta K_\beta^{-1/2}.$$
 
-Between-cluster coefficients and the intercept are therefore $g^{-1/2}$
-They are not all normalized by the same number of observations. In the
+Between-cluster coefficients and the intercept have standard errors of order
+$g^{-1/2}$, while within-cluster coefficients have standard errors of order
+$n^{-1/2}$. They are not all normalized by the same number of observations.
+In the
 special case where cluster sizes remain bounded, $n/g$ is bounded and all
 components are effectively on the $g^{-1/2}$ scale; the separate $n^{-1/2}$
 rate becomes relevant when cluster sizes grow.
@@ -238,10 +259,11 @@ cluster sizes they remain bounded. What is required is that the normalized
 design cross-products and covariance limits exist and remain nonsingular.
 For a general three-level mixed model, deriving the exact block matrix
 $C_\beta$ and its cross-level off-diagonal terms is still an open
-mathematical task for this project; the current `level` option should be
-interpreted as a user-selected scaling convention, with the validity
-restriction in Section 4, rather than as a completed three-level asymptotic
-theorem.
+mathematical task for this project; the current common-level scaling
+convention is not a completed three-level asymptotic theorem. It reports the
+covariate's design-variation level separately from the grouping selected for
+normalization, and permits an explicit scalar override when the user's
+sampling assumption differs from the selected level.
 
 ### 3.4 Equal within- and between-cluster coefficients: what is the RESI?
 
@@ -375,7 +397,7 @@ Non-nested random effects detected. clubSandwich methods are not
 available for such models.
 ```
 
-when `level` was set to the **child** level for Model A (which also has a
+when `cluster` was set to the **child** level for Model A (which also has a
 school random intercept). This is not a bug or an implementation detail --
 it reflects a real mathematical requirement of cluster-robust variance
 estimation, and it is the central finding of this note.
@@ -414,84 +436,67 @@ checks this internally (`is_nested_lmerMod()`/`check_nested()`): for each
 model grouping factor $g_q$ and each of its levels, the candidate cluster
 $c$ must take exactly one value. Concretely, for Model A:
 
-- `level = "schoolid"` (60 groups): valid -- every child (`childid:schoolid`)
+- `cluster = "schoolid"` (60 groups): valid -- every child (`childid:schoolid`)
   belongs to exactly one school, and every school belongs to exactly one
   school (trivially). This is also `clubSandwich`'s own default (`get_outer_group()`),
   which always uses the model's outermost grouping factor.
-- `level = "childid:schoolid"` (1721 groups): **invalid** -- most schools
+- `cluster = "childid:schoolid"` (1721 groups): **invalid** -- most schools
   contain more than one child, so a school's rows span multiple
   `childid:schoolid` clusters, meaning the required cross-cluster
   independence is violated.
 
 **Practical consequence:** for a $K$-level nested random-intercept model,
-`level` can only be validly set to the outermost grouping factor (or,
-equivalently, `level = NULL`'s coarsest available choice) when a
-cluster-robust `vcovfunc` (the package default, `clubSandwich::vcovCR`) is
-used. `RESI/R/resi_pe.R` now raises an informative error (rather than
-`clubSandwich`'s cryptic one) when an explicit `level` is not achievable
-this way, pointing back to this note.
+a cluster-robust `vcovfunc` (the package default, `clubSandwich::vcovCR`)
+requires `cluster` to be at least as coarse as the outermost grouping
+factor. This constraint applies to covariance clustering; it does not
+constrain `n`, which independently records the assumed normalizing count
+for the target effect.
 
-### 4.3 Why the *default* behavior mixes levels, and why that is preserved
+### 4.3 Common normalizer and covariance choice
 
-Before this change (and still, when `level = NULL`), `resi_pe.lmerMod()`/
-`resi_pe.lme()` used $N$ from the model's **finest** grouping level (e.g.,
-number of children) together with `clubSandwich`'s own default variance
-clustering, which is the **outermost** level (e.g., schools) --
-i.e., the pre-existing default already mixed two different levels'
-information (a finer $N$ paired with a coarser-clustered variance). Given
-Section 4.1-4.2, this default is not the mathematically self-consistent
-"$S_k$ at a single level $k$" of Section 3 -- but it is retained unchanged
-here for backward compatibility (all existing numeric outputs and tests are
-unaffected). When `level` is **explicitly** supplied, the implementation
-now also re-clusters the variance at that level (raising the error in
-Section 4.2 if it is not a valid choice), so that an explicit `level` gives
-the mathematically consistent quantity from Section 3, while the default
-remains exactly what it was before.
+The active interface uses one common `n` for every coefficient and ANOVA
+term. `level` selects the random-effect hierarchy count; for `egsingle`,
+`level = 2` selects the student grouping and gives `n = 1721` in the full
+sample. A positive scalar `n` can override that count. The covariance choice
+is separate: the calibration uses the model-based `stats::vcov` for both the
+full-data reference and simulated fits, while robust covariance remains an
+optional estimator for other analyses.
+
+The code still reports the lowest observed design level where each term
+changes as `Variation level`. `n level` reports the common grouping selected
+by `level`. If `level` is omitted, level 1 is selected and a message names
+the grouping factor used.
 
 ## 5. Mapping to the implementation
 
-`RESI/R/resi_pe.R`:
+`RESI/R/resi_pe_mixed.R`:
 
-- `.resiMixedLevelInfo(ngrps_vec, level)` resolves `level` (`NULL`,
-  a grouping-factor name, or a numeric index into
-  `summary(model)$ngrps` / `summary(model)$dims$ngrps[seq_len(dims$Q)]`)
-  to `list(N, name, explicit)`.
-- `N` is used directly as the sample size in `chisq2S()`/`z2S()` for both
-  L-RESI and CS-RESI (Section 3).
-- The per-row grouping factor for the resolved level (`model.full@flist[[name]]`
-  for `lmerMod`; `data[[name]]` for `lme`, since nlme's grouping variables
-  are literal data columns, unlike `lme4`'s synthetic nested-interaction
-  labels such as `"childid:schoolid"`) is used both:
-  - as the CS-RESI reweighting variable ($1/n_i^{(k)}$, Section 3), and
-  - (only when `level` is **explicit**) injected as `vcov.args$cluster` for
-    `clubSandwich::vcovCR`, so the L-RESI variance is clustered at the same
-    level as $N$ (Section 4.3).
-- If clustering at an explicit level is mathematically invalid
-  (Section 4.2), the `clubSandwich` error is caught and re-raised with a
-  message pointing back to this note.
+- `.resiMixedScaleMap()` inspects the fixed-effect model matrix and grouping
+  memberships, reports `Variation level`, and applies one level-selected
+  independent-unit count `n` to every term.
+- The coefficient table includes `Term`, `RESI`, and `n`; by default it also
+  includes `Variation level` and `n level`. ANOVA rows receive the same
+  term-specific metadata. `include_level = FALSE` hides only the two level
+  columns, not `n`.
+- `n` is passed to `z2S()`/`chisq2S()` for RESI conversion and is common to
+  all terms. `level` selects its grouping count; an unnamed positive scalar
+  `n` overrides it.
 
 ## 6. Worked example (Model A, `mlmRev::egsingle`)
 
 For `math ~ year + female + black + hispanic + size_100 + lowinc_10 + (1 | schoolid/childid)`:
 
-| `level`                 | $N$  | Variance clustered at | Valid? |
-|-------------------------|------|------------------------|--------|
-| `NULL` (default)        | 1721 (child) | school (`clubSandwich` default) | yes (pre-existing, mixed-level default) |
-| `"schoolid"`             | 60   | school                 | yes (self-consistent $S_{\text{school}}$) |
-| `"childid:schoolid"`     | 1721 | child                  | **no** -- errors informatively |
+The new coefficient metadata for this model have this structure:
 
-Selected point estimates (`resi_pe(fit, level = ...)`):
+| Term | `Variation level` | `n level` | Default `n` |
+|---|---|---|---:|
+| `year` | observation within child | child | 1721 |
+| `female`, `black`, `hispanic` | child within school | child | 1721 |
+| `size_100`, `lowinc_10` | school | child | 1721 |
+| `(Intercept)` | overall/intercept | child | 1721 |
 
-| Term        | `level = NULL` L-RESI | `level = "schoolid"` L-RESI |
-|-------------|:---------------------:|:----------------------------:|
-| `year`      | 1.109                 | 5.938                        |
-| `black1`    | 0.148                 | 0.791                        |
-| `lowinc_10` | 0.111                 | 0.594                        |
-
-As expected, computing the RESI relative to the much smaller school-level
-$N$ (60 vs. 1721) inflates the effect size, since $S \propto 1/\sqrt N$ for
-a fixed Wald statistic magnitude (though the Wald statistic itself also
-changes because the variance is now clustered differently).
+For this model, use `resi_pe(fit, vcovfunc = stats::vcov, level = 2)` to use
+the model-based covariance and the common student count for every term.
 
 ## 7. Brainstorming: a genuine student-level effect size
 
@@ -535,10 +540,12 @@ estimator is. A "student-level RESI" could plausibly be defined using
 children, explicitly flagged as **model-based, not cluster-robust**. This
 is close to what the *pre-existing default* does today when `vcovfunc =
 stats::vcov` is requested (the naive branch already implemented in
-`resi_pe.lmerMod`/`resi_pe.lme`) -- except currently that branch still
-divides by whichever $N$ `level` resolves to, without a principled
-argument for why the model-based variance's effective information content
-matches that particular $N$. Making this connection precise (i.e., showing
+(`resi_pe.lmerMod`/`resi_pe.lme`) -- except the estimator still needs a
+principled argument connecting the model-based variance's effective
+information content to the per-term normalizer `n`. The automatic design
+heuristic assigns a count based on the lowest grouping level at which the
+term varies, but this is not itself a derivation of the model-based
+variance's exact information rate. Making this connection precise (i.e., showing
 what $N$ the model-based variance behaves *as if* it were divided by, for
 a child-level covariate specifically) is unresolved.
 

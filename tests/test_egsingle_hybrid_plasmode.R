@@ -12,6 +12,33 @@
 
 devtools::load_all("/media/alsobig/AIgams/RESI")
 
+.hybridResiCalibrationSummary <- function(reps, truth_resi, settings) {
+  sources <- list(
+    coefficients = list(rep_name = "resi_coef", truth = truth_resi$coefficients),
+    anova = list(rep_name = "resi_anova", truth = truth_resi$anova)
+  )
+  do.call(rbind, unlist(lapply(names(sources), function(table_name) {
+    source <- sources[[table_name]]
+    terms <- rownames(source$truth)
+    lapply(terms, function(term) {
+      values <- vapply(reps, function(rep) rep[[source$rep_name]][term, "RESI"], numeric(1L))
+      first <- reps[[1L]][[source$rep_name]][term, , drop = FALSE]
+      data.frame(
+        as.list(settings), table = table_name, term = term,
+        n = first$n, variation_level = first$`Variation level`,
+        n_level = first$`n level`,
+        truth_resi = source$truth[term, "RESI"],
+        mc_mean_resi = mean(values, na.rm = TRUE),
+        bias_resi = source$truth[term, "RESI"] - mean(values, na.rm = TRUE),
+        mc_sd_resi = stats::sd(values, na.rm = TRUE),
+        mc_se_resi = stats::sd(values, na.rm = TRUE) / sqrt(sum(is.finite(values))),
+        n_success = sum(is.finite(values)),
+        check.names = FALSE, row.names = NULL
+      )
+    })
+  }), recursive = FALSE))
+}
+
 egsingle <- local({
   e <- new.env()
   utils::data("egsingle", package = "mlmRev", envir = e)
@@ -36,6 +63,13 @@ print(lme4::VarCorr(truth_fit))
 # Known-truth params are the fitted Model A population parameters.
 true_params <- RESI:::.longSimExtractParams(truth_fit)
 true_fe_se  <- RESI:::.longSimExtractFeSe(truth_fit)
+# The target is the model-based RESI of the fitted DGP. A robust covariance
+# from the real data would include real-data slope heterogeneity removed by
+# this hybrid generator; replicate fits still use the separately chosen
+# Use the same ML/model-based covariance estimator and student-level common
+# normalizer for the full-data target and every simulated replicate.
+truth_resi  <- RESI::resi_pe(truth_fit, anova = TRUE,
+                              vcovfunc = stats::vcov, level = 2)
 
 vc <- as.data.frame(lme4::VarCorr(truth_fit))
 school_var <- vc$vcov[vc$grp == "schoolid" & is.na(vc$var2)]
@@ -82,12 +116,14 @@ generate_outcome <- function(design) {
     rnorm(nrow(design), sd = resid_sd)
 }
 
-n_schools.vec <- c(15, 30, 60, 90, 120)
-nsim <- 1000L
-mc.cores.reps <- 24L
+n_schools.vec <- getOption("resi.n_schools", c(15, 30, 60, 90, 120))
+nsim <- getOption("resi.nsim", 1000L)
+mc.cores.reps <- getOption("resi.mc.cores.reps", 24L)
 
 set.seed(2026)
 message("Running hybrid plasmode (BLUP-resampled random effects) calibration check for Model A ...")
+resi_rows <- vector("list", length(n_schools.vec))
+names(resi_rows) <- as.character(n_schools.vec)
 rows <- lapply(n_schools.vec, function(n_schools) {
   reps_raw <- parallel::mclapply(seq_len(nsim), function(i) {
     samp <- fixed_design(n_schools)
@@ -97,8 +133,12 @@ rows <- lapply(n_schools.vec, function(n_schools) {
         lme4::lmer(form_A, data = samp, REML = FALSE, control = ctrl))),
       error = function(e) NULL)
     if (is.null(fit)) return(NULL)
+        point <- RESI::resi_pe(fit, anova = TRUE,
+                   vcovfunc = stats::vcov, level = 2)
     list(params = RESI:::.longSimExtractParams(fit),
-         fe_se  = RESI:::.longSimExtractFeSe(fit))
+          fe_se  = RESI:::.longSimExtractFeSe(fit),
+          resi_coef = point$coefficients,
+          resi_anova = point$anova)
   }, mc.cores = mc.cores.reps)
 
   reps <- Filter(Negate(is.null), reps_raw)
@@ -114,6 +154,9 @@ rows <- lapply(n_schools.vec, function(n_schools) {
   fe_se_mat <- t(vapply(reps, function(r) r$fe_se[fe_names], numeric(length(fe_names))))
   colnames(fe_se_mat) <- fe_names
   mean_model_se <- colMeans(fe_se_mat, na.rm = TRUE)
+
+  resi_rows[[as.character(n_schools)]] <<- .hybridResiCalibrationSummary(
+    reps, truth_resi, list(n_schools = n_schools))
 
   is_fe <- param_names %in% fe_names
   data.frame(
@@ -132,7 +175,9 @@ rows <- lapply(n_schools.vec, function(n_schools) {
 })
 
 summary_table <- do.call(rbind, rows)
-saveRDS(summary_table, file = "tests/hybrid_plasmode_summary.rds")
+saveRDS(summary_table, file = getOption("resi.output.summary", "tests/hybrid_plasmode_summary.rds"))
+resi_summary <- do.call(rbind, resi_rows)
+saveRDS(resi_summary, file = getOption("resi.output.resi_summary", "tests/hybrid_plasmode_resi_summary.rds"))
 
 cat("\n=== Fixed effects: se_ratio by n_schools (hybrid plasmode, Model A) ===\n")
 fe <- summary_table[grepl("^beta_", summary_table$param), ]
@@ -146,3 +191,8 @@ vc2$rel_bias_pct <- 100 * vc2$bias / vc2$truth
 widevc <- reshape(vc2[, c("param", "n_schools", "rel_bias_pct")],
                     idvar = "param", timevar = "n_schools", direction = "wide")
 print(widevc, digits = 3)
+
+cat("\n=== RESI calibration: full-data reference vs Monte Carlo ===\n")
+print(resi_summary[, c("n_schools", "table", "term", "variation_level", "n_level", "n",
+           "truth_resi", "mc_mean_resi", "bias_resi", "mc_sd_resi")],
+  row.names = FALSE, digits = 3)

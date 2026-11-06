@@ -1,0 +1,557 @@
+nohup: ignoring input
+ℹ Loading RESI
+Registered S3 method overwritten by 'clubSandwich':
+  method    from    
+  bread.mlm sandwich
+Registered S3 method overwritten by 'lme4':
+  method           from
+  na.action.merMod car 
+=== Real-data Model A fit (used as simulation DGP) ===
+ (Intercept)         year   femaleMale       black1    hispanic1     size_100 
+ 0.246335091  0.746434636 -0.002850076 -0.511427768 -0.286735335 -0.010885679 
+   lowinc_10 
+-0.079569603 
+ Groups           Name        Std.Dev.
+ childid:schoolid (Intercept) 0.80741 
+ schoolid         (Intercept) 0.28076 
+ Residual                     0.58902 
+school BLUP pool: n = 60  mean = 3.933169e-18  var = 0.07882424 
+child BLUP pool: n = 1721  mean = 1.906126e-17  var = 0.6519162 
+Running hybrid plasmode fixed-n_per_site calibration check for Model A ...
+
+=== Fixed effects: se_ratio by (n_schools, n_per_site), hybrid plasmode Model A ===
+
+-- beta_(Intercept) --
+   n_schools se_ratio.25 se_ratio.50 se_ratio.100 se_ratio.200
+1         15       0.854       0.879        0.843        0.853
+11        30       0.952       0.951        0.956        0.913
+21        60       0.946       0.990        0.965        0.950
+
+-- beta_year --
+   n_schools se_ratio.25 se_ratio.50 se_ratio.100 se_ratio.200
+2         15       0.970        1.06        1.000        1.025
+12        30       0.972        1.01        0.972        1.018
+22        60       0.983        1.03        0.955        0.993
+
+-- beta_femaleMale --
+   n_schools se_ratio.25 se_ratio.50 se_ratio.100 se_ratio.200
+3         15       0.971       0.988        1.000         1.01
+13        30       1.011       1.022        0.975         1.02
+23        60       1.034       1.002        0.965         1.03
+
+-- beta_black1 --
+   n_schools se_ratio.25 se_ratio.50 se_ratio.100 se_ratio.200
+4         15       0.964       0.972        0.970        1.012
+14        30       0.977       1.003        1.006        0.965
+24        60       0.960       1.035        0.988        0.971
+
+-- beta_hispanic1 --
+   n_schools se_ratio.25 se_ratio.50 se_ratio.100 se_ratio.200
+5         15       0.989        1.01        1.039        1.026
+15        30       0.994        1.02        0.995        1.009
+25        60       0.998        1.01        0.956        0.964
+
+-- beta_size_100 --
+   n_schools se_ratio.25 se_ratio.50 se_ratio.100 se_ratio.200
+6         15       0.840       0.904        0.835        0.887
+16        30       0.926       0.930        0.948        0.938
+26        60       0.952       0.968        0.972        0.991
+
+-- beta_lowinc_10 --
+   n_schools se_ratio.25 se_ratio.50 se_ratio.100 se_ratio.200
+7         15       0.856       0.853        0.837        0.860
+17        30       0.942       0.925        0.919        0.927
+27        60       0.968       1.021        0.926        0.931
+
+=== Variance components: relative bias (%) by (n_schools, n_per_site) ===
+
+-- var_childid:schoolid_(Intercept) --
+   n_schools rel_bias_pct.25 rel_bias_pct.50 rel_bias_pct.100 rel_bias_pct.200
+8         15           1.204           0.705           0.1684           0.2915
+18        30           0.321           0.204           0.0536           0.0506
+28        60           0.294           0.155           0.2965           0.0353
+
+-- var_schoolid_(Intercept) --
+   n_schools rel_bias_pct.25 rel_bias_pct.50 rel_bias_pct.100 rel_bias_pct.200
+9         15           30.83           25.23            24.75            23.78
+19        30           17.14           14.79            12.21            13.50
+29        60            8.33            8.79             6.97             7.55
+
+-- var_Residual --
+   n_schools rel_bias_pct.25 rel_bias_pct.50 rel_bias_pct.100 rel_bias_pct.200
+10        15          -0.106          0.0608          -0.0249         3.86e-05
+20        30           0.169          0.1525          -0.0638        -1.82e-02
+30        60           0.121         -0.0780          -0.0140         1.42e-02
+
+=== RESI calibration: full-data reference vs Monte Carlo ===
+ n_schools n_per_site        table        term
+        15         25 coefficients (Intercept)
+        15         25 coefficients        year
+        15         25 coefficients  femaleMale
+        15         25 coefficients      black1
+        15         25 coefficients   hispanic1
+        15         25 coefficients    size_100
+        15         25 coefficients   lowinc_10
+        15         25        anova        year
+        15         25        anova      female
+        15         25        anova       black
+        15         25        anova    hispanic
+        15         25        anova    size_100
+        15         25        anova   lowinc_10
+        30         25 coefficients (Intercept)
+        30         25 coefficients        year
+        30         25 coefficients  femaleMale
+        30         25 coefficients      black1
+        30         25 coefficients   hispanic1
+        30         25 coefficients    size_100
+        30         25 coefficients   lowinc_10
+        30         25        anova        year
+        30         25        anova      female
+        30         25        anova       black
+        30         25        anova    hispanic
+        30         25        anova    size_100
+        30         25        anova   lowinc_10
+        60         25 coefficients (Intercept)
+        60         25 coefficients        year
+        60         25 coefficients  femaleMale
+        60         25 coefficients      black1
+        60         25 coefficients   hispanic1
+        60         25 coefficients    size_100
+        60         25 coefficients   lowinc_10
+        60         25        anova        year
+        60         25        anova      female
+        60         25        anova       black
+        60         25        anova    hispanic
+        60         25        anova    size_100
+        60         25        anova   lowinc_10
+        15         50 coefficients (Intercept)
+        15         50 coefficients        year
+        15         50 coefficients  femaleMale
+        15         50 coefficients      black1
+        15         50 coefficients   hispanic1
+        15         50 coefficients    size_100
+        15         50 coefficients   lowinc_10
+        15         50        anova        year
+        15         50        anova      female
+        15         50        anova       black
+        15         50        anova    hispanic
+        15         50        anova    size_100
+        15         50        anova   lowinc_10
+        30         50 coefficients (Intercept)
+        30         50 coefficients        year
+        30         50 coefficients  femaleMale
+        30         50 coefficients      black1
+        30         50 coefficients   hispanic1
+        30         50 coefficients    size_100
+        30         50 coefficients   lowinc_10
+        30         50        anova        year
+        30         50        anova      female
+        30         50        anova       black
+        30         50        anova    hispanic
+        30         50        anova    size_100
+        30         50        anova   lowinc_10
+        60         50 coefficients (Intercept)
+        60         50 coefficients        year
+        60         50 coefficients  femaleMale
+        60         50 coefficients      black1
+        60         50 coefficients   hispanic1
+        60         50 coefficients    size_100
+        60         50 coefficients   lowinc_10
+        60         50        anova        year
+        60         50        anova      female
+        60         50        anova       black
+        60         50        anova    hispanic
+        60         50        anova    size_100
+        60         50        anova   lowinc_10
+        15        100 coefficients (Intercept)
+        15        100 coefficients        year
+        15        100 coefficients  femaleMale
+        15        100 coefficients      black1
+        15        100 coefficients   hispanic1
+        15        100 coefficients    size_100
+        15        100 coefficients   lowinc_10
+        15        100        anova        year
+        15        100        anova      female
+        15        100        anova       black
+        15        100        anova    hispanic
+        15        100        anova    size_100
+        15        100        anova   lowinc_10
+        30        100 coefficients (Intercept)
+        30        100 coefficients        year
+        30        100 coefficients  femaleMale
+        30        100 coefficients      black1
+        30        100 coefficients   hispanic1
+        30        100 coefficients    size_100
+        30        100 coefficients   lowinc_10
+        30        100        anova        year
+        30        100        anova      female
+        30        100        anova       black
+        30        100        anova    hispanic
+        30        100        anova    size_100
+        30        100        anova   lowinc_10
+        60        100 coefficients (Intercept)
+        60        100 coefficients        year
+        60        100 coefficients  femaleMale
+        60        100 coefficients      black1
+        60        100 coefficients   hispanic1
+        60        100 coefficients    size_100
+        60        100 coefficients   lowinc_10
+        60        100        anova        year
+        60        100        anova      female
+        60        100        anova       black
+        60        100        anova    hispanic
+        60        100        anova    size_100
+        60        100        anova   lowinc_10
+        15        200 coefficients (Intercept)
+        15        200 coefficients        year
+        15        200 coefficients  femaleMale
+        15        200 coefficients      black1
+        15        200 coefficients   hispanic1
+        15        200 coefficients    size_100
+        15        200 coefficients   lowinc_10
+        15        200        anova        year
+        15        200        anova      female
+        15        200        anova       black
+        15        200        anova    hispanic
+        15        200        anova    size_100
+        15        200        anova   lowinc_10
+        30        200 coefficients (Intercept)
+        30        200 coefficients        year
+        30        200 coefficients  femaleMale
+        30        200 coefficients      black1
+        30        200 coefficients   hispanic1
+        30        200 coefficients    size_100
+        30        200 coefficients   lowinc_10
+        30        200        anova        year
+        30        200        anova      female
+        30        200        anova       black
+        30        200        anova    hispanic
+        30        200        anova    size_100
+        30        200        anova   lowinc_10
+        60        200 coefficients (Intercept)
+        60        200 coefficients        year
+        60        200 coefficients  femaleMale
+        60        200 coefficients      black1
+        60        200 coefficients   hispanic1
+        60        200 coefficients    size_100
+        60        200 coefficients   lowinc_10
+        60        200        anova        year
+        60        200        anova      female
+        60        200        anova       black
+        60        200        anova    hispanic
+        60        200        anova    size_100
+        60        200        anova   lowinc_10
+                     variation_level          n_level     n truth_resi
+                   overall/intercept childid:schoolid   375    0.04046
+ observation within childid:schoolid childid:schoolid   375    3.33625
+                    childid:schoolid childid:schoolid   375   -0.00164
+                    childid:schoolid childid:schoolid   375   -0.15490
+                    childid:schoolid childid:schoolid   375   -0.07832
+                            schoolid         schoolid    15   -0.09850
+                            schoolid         schoolid    15   -0.58612
+ observation within childid:schoolid childid:schoolid   375    3.33617
+                    childid:schoolid childid:schoolid   375    0.00000
+                    childid:schoolid childid:schoolid   375    0.15302
+                    childid:schoolid childid:schoolid   375    0.07452
+                            schoolid         schoolid    15    0.00000
+                            schoolid         schoolid    15    0.57172
+                   overall/intercept childid:schoolid   750    0.04046
+ observation within childid:schoolid childid:schoolid   750    3.33625
+                    childid:schoolid childid:schoolid   750   -0.00164
+                    childid:schoolid childid:schoolid   750   -0.15490
+                    childid:schoolid childid:schoolid   750   -0.07832
+                            schoolid         schoolid    30   -0.09850
+                            schoolid         schoolid    30   -0.58612
+ observation within childid:schoolid childid:schoolid   750    3.33617
+                    childid:schoolid childid:schoolid   750    0.00000
+                    childid:schoolid childid:schoolid   750    0.15302
+                    childid:schoolid childid:schoolid   750    0.07452
+                            schoolid         schoolid    30    0.00000
+                            schoolid         schoolid    30    0.57172
+                   overall/intercept childid:schoolid  1500    0.04046
+ observation within childid:schoolid childid:schoolid  1500    3.33625
+                    childid:schoolid childid:schoolid  1500   -0.00164
+                    childid:schoolid childid:schoolid  1500   -0.15490
+                    childid:schoolid childid:schoolid  1500   -0.07832
+                            schoolid         schoolid    60   -0.09850
+                            schoolid         schoolid    60   -0.58612
+ observation within childid:schoolid childid:schoolid  1500    3.33617
+                    childid:schoolid childid:schoolid  1500    0.00000
+                    childid:schoolid childid:schoolid  1500    0.15302
+                    childid:schoolid childid:schoolid  1500    0.07452
+                            schoolid         schoolid    60    0.00000
+                            schoolid         schoolid    60    0.57172
+                   overall/intercept childid:schoolid   750    0.04046
+ observation within childid:schoolid childid:schoolid   750    3.33625
+                    childid:schoolid childid:schoolid   750   -0.00164
+                    childid:schoolid childid:schoolid   750   -0.15490
+                    childid:schoolid childid:schoolid   750   -0.07832
+                            schoolid         schoolid    15   -0.09850
+                            schoolid         schoolid    15   -0.58612
+ observation within childid:schoolid childid:schoolid   750    3.33617
+                    childid:schoolid childid:schoolid   750    0.00000
+                    childid:schoolid childid:schoolid   750    0.15302
+                    childid:schoolid childid:schoolid   750    0.07452
+                            schoolid         schoolid    15    0.00000
+                            schoolid         schoolid    15    0.57172
+                   overall/intercept childid:schoolid  1500    0.04046
+ observation within childid:schoolid childid:schoolid  1500    3.33625
+                    childid:schoolid childid:schoolid  1500   -0.00164
+                    childid:schoolid childid:schoolid  1500   -0.15490
+                    childid:schoolid childid:schoolid  1500   -0.07832
+                            schoolid         schoolid    30   -0.09850
+                            schoolid         schoolid    30   -0.58612
+ observation within childid:schoolid childid:schoolid  1500    3.33617
+                    childid:schoolid childid:schoolid  1500    0.00000
+                    childid:schoolid childid:schoolid  1500    0.15302
+                    childid:schoolid childid:schoolid  1500    0.07452
+                            schoolid         schoolid    30    0.00000
+                            schoolid         schoolid    30    0.57172
+                   overall/intercept childid:schoolid  3000    0.04046
+ observation within childid:schoolid childid:schoolid  3000    3.33625
+                    childid:schoolid childid:schoolid  3000   -0.00164
+                    childid:schoolid childid:schoolid  3000   -0.15490
+                    childid:schoolid childid:schoolid  3000   -0.07832
+                            schoolid         schoolid    60   -0.09850
+                            schoolid         schoolid    60   -0.58612
+ observation within childid:schoolid childid:schoolid  3000    3.33617
+                    childid:schoolid childid:schoolid  3000    0.00000
+                    childid:schoolid childid:schoolid  3000    0.15302
+                    childid:schoolid childid:schoolid  3000    0.07452
+                            schoolid         schoolid    60    0.00000
+                            schoolid         schoolid    60    0.57172
+                   overall/intercept childid:schoolid  1500    0.04046
+ observation within childid:schoolid childid:schoolid  1500    3.33625
+                    childid:schoolid childid:schoolid  1500   -0.00164
+                    childid:schoolid childid:schoolid  1500   -0.15490
+                    childid:schoolid childid:schoolid  1500   -0.07832
+                            schoolid         schoolid    15   -0.09850
+                            schoolid         schoolid    15   -0.58612
+ observation within childid:schoolid childid:schoolid  1500    3.33617
+                    childid:schoolid childid:schoolid  1500    0.00000
+                    childid:schoolid childid:schoolid  1500    0.15302
+                    childid:schoolid childid:schoolid  1500    0.07452
+                            schoolid         schoolid    15    0.00000
+                            schoolid         schoolid    15    0.57172
+                   overall/intercept childid:schoolid  3000    0.04046
+ observation within childid:schoolid childid:schoolid  3000    3.33625
+                    childid:schoolid childid:schoolid  3000   -0.00164
+                    childid:schoolid childid:schoolid  3000   -0.15490
+                    childid:schoolid childid:schoolid  3000   -0.07832
+                            schoolid         schoolid    30   -0.09850
+                            schoolid         schoolid    30   -0.58612
+ observation within childid:schoolid childid:schoolid  3000    3.33617
+                    childid:schoolid childid:schoolid  3000    0.00000
+                    childid:schoolid childid:schoolid  3000    0.15302
+                    childid:schoolid childid:schoolid  3000    0.07452
+                            schoolid         schoolid    30    0.00000
+                            schoolid         schoolid    30    0.57172
+                   overall/intercept childid:schoolid  6000    0.04046
+ observation within childid:schoolid childid:schoolid  6000    3.33625
+                    childid:schoolid childid:schoolid  6000   -0.00164
+                    childid:schoolid childid:schoolid  6000   -0.15490
+                    childid:schoolid childid:schoolid  6000   -0.07832
+                            schoolid         schoolid    60   -0.09850
+                            schoolid         schoolid    60   -0.58612
+ observation within childid:schoolid childid:schoolid  6000    3.33617
+                    childid:schoolid childid:schoolid  6000    0.00000
+                    childid:schoolid childid:schoolid  6000    0.15302
+                    childid:schoolid childid:schoolid  6000    0.07452
+                            schoolid         schoolid    60    0.00000
+                            schoolid         schoolid    60    0.57172
+                   overall/intercept childid:schoolid  3000    0.04046
+ observation within childid:schoolid childid:schoolid  3000    3.33625
+                    childid:schoolid childid:schoolid  3000   -0.00164
+                    childid:schoolid childid:schoolid  3000   -0.15490
+                    childid:schoolid childid:schoolid  3000   -0.07832
+                            schoolid         schoolid    15   -0.09850
+                            schoolid         schoolid    15   -0.58612
+ observation within childid:schoolid childid:schoolid  3000    3.33617
+                    childid:schoolid childid:schoolid  3000    0.00000
+                    childid:schoolid childid:schoolid  3000    0.15302
+                    childid:schoolid childid:schoolid  3000    0.07452
+                            schoolid         schoolid    15    0.00000
+                            schoolid         schoolid    15    0.57172
+                   overall/intercept childid:schoolid  6000    0.04046
+ observation within childid:schoolid childid:schoolid  6000    3.33625
+                    childid:schoolid childid:schoolid  6000   -0.00164
+                    childid:schoolid childid:schoolid  6000   -0.15490
+                    childid:schoolid childid:schoolid  6000   -0.07832
+                            schoolid         schoolid    30   -0.09850
+                            schoolid         schoolid    30   -0.58612
+ observation within childid:schoolid childid:schoolid  6000    3.33617
+                    childid:schoolid childid:schoolid  6000    0.00000
+                    childid:schoolid childid:schoolid  6000    0.15302
+                    childid:schoolid childid:schoolid  6000    0.07452
+                            schoolid         schoolid    30    0.00000
+                            schoolid         schoolid    30    0.57172
+                   overall/intercept childid:schoolid 12000    0.04046
+ observation within childid:schoolid childid:schoolid 12000    3.33625
+                    childid:schoolid childid:schoolid 12000   -0.00164
+                    childid:schoolid childid:schoolid 12000   -0.15490
+                    childid:schoolid childid:schoolid 12000   -0.07832
+                            schoolid         schoolid    60   -0.09850
+                            schoolid         schoolid    60   -0.58612
+ observation within childid:schoolid childid:schoolid 12000    3.33617
+                    childid:schoolid childid:schoolid 12000    0.00000
+                    childid:schoolid childid:schoolid 12000    0.15302
+                    childid:schoolid childid:schoolid 12000    0.07452
+                            schoolid         schoolid    60    0.00000
+                            schoolid         schoolid    60    0.57172
+ mc_mean_resi bias_resi mc_sd_resi
+     0.046294 -5.83e-03    0.05423
+     3.497780 -1.62e-01    0.73755
+    -0.001344 -2.96e-04    0.05473
+    -0.174134  1.92e-02    0.07380
+    -0.100032  2.17e-02    0.06451
+    -0.083812 -1.47e-02    0.27412
+    -0.532036 -5.41e-02    0.32091
+     3.497383 -1.61e-01    0.73763
+     0.019390 -1.94e-02    0.03425
+     0.164358 -1.13e-02    0.07816
+     0.082451 -7.93e-03    0.07112
+     0.103181 -1.03e-01    0.19398
+     0.445920  1.26e-01    0.35654
+     0.044806 -4.34e-03    0.03629
+     3.381374 -4.51e-02    0.45695
+    -0.001415 -2.25e-04    0.03697
+    -0.171280  1.64e-02    0.04887
+    -0.092747  1.44e-02    0.04154
+    -0.096574 -1.92e-03    0.18743
+    -0.624620  3.85e-02    0.22753
+     3.381173 -4.50e-02    0.45697
+     0.012501 -1.25e-02    0.02320
+     0.166942 -1.39e-02    0.05023
+     0.083084 -8.56e-03    0.04629
+     0.082633 -8.26e-02    0.13885
+     0.591891 -2.02e-02    0.24148
+     0.045219 -4.76e-03    0.02699
+     3.338736 -2.48e-03    0.32674
+    -0.002324  6.84e-04    0.02525
+    -0.171082  1.62e-02    0.03522
+    -0.091612  1.33e-02    0.02910
+    -0.099234  7.37e-04    0.13364
+    -0.604076  1.80e-02    0.15538
+     3.338635 -2.47e-03    0.32675
+     0.008505 -8.51e-03    0.01551
+     0.169033 -1.60e-02    0.03564
+     0.087230 -1.27e-02    0.03107
+     0.075582 -7.56e-02    0.10914
+     0.588947 -1.72e-02    0.15977
+     0.033943  6.52e-03    0.03867
+     3.492150 -1.56e-01    0.71766
+    -0.001759  1.19e-04    0.03843
+    -0.172504  1.76e-02    0.05782
+    -0.097610  1.93e-02    0.04853
+    -0.100611  2.11e-03    0.27048
+    -0.581625 -4.49e-03    0.33593
+     3.491951 -1.56e-01    0.71769
+     0.013634 -1.36e-02    0.02470
+     0.168077 -1.51e-02    0.05931
+     0.088020 -1.35e-02    0.05333
+     0.099897 -9.99e-02    0.19993
+     0.500380  7.13e-02    0.37286
+     0.033737  6.72e-03    0.02572
+     3.388383 -5.21e-02    0.47283
+    -0.001172 -4.67e-04    0.02531
+    -0.168489  1.36e-02    0.04323
+    -0.092344  1.40e-02    0.03104
+    -0.109214  1.07e-02    0.19048
+    -0.695909  1.10e-01    0.24565
+     3.388283 -5.21e-02    0.47285
+     0.008584 -8.58e-03    0.01537
+     0.166364 -1.33e-02    0.04375
+     0.088064 -1.35e-02    0.03277
+     0.091619 -9.16e-02    0.14352
+     0.667254 -9.55e-02    0.25720
+     0.034420  6.04e-03    0.01829
+     3.304555  3.17e-02    0.31557
+    -0.002062  4.22e-04    0.01851
+    -0.166145  1.12e-02    0.02795
+    -0.089946  1.16e-02    0.02290
+    -0.108901  1.04e-02    0.13396
+    -0.672042  8.59e-02    0.15643
+     3.304505  3.17e-02    0.31558
+     0.006600 -6.60e-03    0.01145
+     0.165109 -1.21e-02    0.02812
+     0.087934 -1.34e-02    0.02343
+     0.082337 -8.23e-02    0.11201
+     0.658724 -8.70e-02    0.15978
+     0.026430  1.40e-02    0.02763
+     3.496709 -1.60e-01    0.73963
+    -0.000446 -1.19e-03    0.02694
+    -0.169768  1.49e-02    0.05327
+    -0.099047  2.07e-02    0.04027
+    -0.112839  1.43e-02    0.28117
+    -0.627069  4.10e-02    0.35098
+     3.496610 -1.60e-01    0.73965
+     0.009412 -9.41e-03    0.01701
+     0.167601 -1.46e-02    0.05387
+     0.094891 -2.04e-02    0.04199
+     0.115732 -1.16e-01    0.20604
+     0.552284  1.94e-02    0.38605
+     0.026245  1.42e-02    0.01823
+     3.351132 -1.49e-02    0.47673
+    -0.001640 -2.77e-07    0.01907
+    -0.161396  6.49e-03    0.03598
+    -0.091603  1.33e-02    0.02644
+    -0.115012  1.65e-02    0.18885
+    -0.748987  1.63e-01    0.25111
+     3.351082 -1.49e-02    0.47674
+     0.006946 -6.95e-03    0.01200
+     0.160308 -7.29e-03    0.03621
+     0.089592 -1.51e-02    0.02702
+     0.090460 -9.05e-02    0.14825
+     0.723024 -1.51e-01    0.26071
+     0.024616  1.58e-02    0.01290
+     3.296519  3.97e-02    0.31051
+    -0.000998 -6.42e-04    0.01348
+    -0.162185  7.28e-03    0.02484
+    -0.088764  1.04e-02    0.01853
+    -0.114122  1.56e-02    0.13166
+    -0.700837  1.15e-01    0.16578
+     3.296493  3.97e-02    0.31051
+     0.004791 -4.79e-03    0.00854
+     0.161659 -8.64e-03    0.02492
+     0.087775 -1.33e-02    0.01874
+     0.084140 -8.41e-02    0.11212
+     0.688068 -1.16e-01    0.16898
+     0.019225  2.12e-02    0.01906
+     3.520049 -1.84e-01    0.78085
+    -0.001044 -5.96e-04    0.01904
+    -0.170680  1.58e-02    0.05078
+    -0.100717  2.24e-02    0.03783
+    -0.104544  6.05e-03    0.26546
+    -0.648679  6.26e-02    0.33835
+     3.519999 -1.84e-01    0.78086
+     0.006643 -6.64e-03    0.01203
+     0.169616 -1.66e-02    0.05106
+     0.098823 -2.43e-02    0.03842
+     0.102241 -1.02e-01    0.19171
+     0.577066 -5.34e-03    0.37278
+     0.018787  2.17e-02    0.01337
+     3.361523 -2.53e-02    0.46012
+    -0.001765  1.25e-04    0.01263
+    -0.162129  7.22e-03    0.03683
+    -0.091658  1.33e-02    0.02334
+    -0.112112  1.36e-02    0.18975
+    -0.768753  1.83e-01    0.24387
+     3.361498 -2.53e-02    0.46012
+     0.004243 -4.24e-03    0.00776
+     0.161589 -8.57e-03    0.03694
+     0.090685 -1.62e-02    0.02357
+     0.092712 -9.27e-02    0.14441
+     0.743897 -1.72e-01    0.25247
+     0.018280  2.22e-02    0.00894
+     3.296135  4.01e-02    0.32340
+    -0.001592 -4.81e-05    0.00893
+    -0.159969  5.06e-03    0.02488
+    -0.088722  1.04e-02    0.01572
+    -0.121261  2.28e-02    0.12893
+    -0.725172  1.39e-01    0.16751
+     3.296122  4.00e-02    0.32340
+     0.003072 -3.07e-03    0.00561
+     0.159702 -6.68e-03    0.02492
+     0.088237 -1.37e-02    0.01580
+     0.086654 -8.67e-02    0.11500
+     0.712902 -1.41e-01    0.17040

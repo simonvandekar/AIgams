@@ -169,44 +169,54 @@ see Goal 5a for the two working model variants.
 **Files:** [FILL IN once formulas are set, e.g. `RESI/R/simulations.R`
 additions, `longitudinalPlasmodeSim()`]
 
-### Goal 2: Extend `resi_pe`/`resi_asymptotic` machinery to `lmer`/`lme`
-**Status:** Not started (CI methods); `level` option and `resi_pe.lme` parity
-implemented 2026-09-25 (see below).
-**Description:** Add asymptotic CI methods (QF and CF — mirroring
-`resi_asymptotic.R`'s `.resi_precompute_ext()`/`.resi_contrast_ext()` framework)
-for the existing `resi_pe.lmerMod` (L-RESI/CS-RESI) point estimates, and the
-analogous `resi_pe.lme` (nlme) if/when that exists. Currently `resi.lmerMod()`
 and `resi.lme()` explicitly warn that no CI procedure exists and return point
-estimates only.
+### Goal 2: Extend `resi_pe`/`resi_asymptotic` machinery to `lmer`/`lme`
+**Status:** New mixed-model point RESI implemented 2026-09-29; CI methods
+remain not started. `resi.lmerMod()`/`resi.lme()` still warn that no CI
+procedure is available and return point estimates only.
+**Description:** Derive and implement asymptotic CIs after the new
+term-specific point estimator and its calibration are validated. The active
+`resi_pe.lmerMod`/`resi_pe.lme` return one `RESI` per coefficient/ANOVA term;
+the former paired L-/CS-RESI mixed-model methods are archived outside package
+builds.
 **Key design decisions:**
 - Does the extended influence-function derivation in the paper (which
   treats $A_\theta$, $B_\theta$ as free parameters via the Delta method) carry
   over directly when the "meat" is a **cluster-robust** (`clubSandwich::vcovCR`)
   covariance instead of an HC (heteroscedasticity-consistent) covariance? Need a
   math derivation note in `notes/` before implementing.
-- What is the effective sample size $n$ for the L-RESI CI (number of
-  clusters, as used for the point estimate) vs. CS-RESI CI (number of
-  observations, per the existing GEE CS-RESI convention)?
-- For the L-RESI the unit really depends on the study design. For small number of sites with large number of observations at each site the unit is really the individuals at each site. For many individuals with repeated measures in individual, the unit is the individual as well. Because the individual occurs at different levels in the mixed model, there really needs to be an option for the user to specify the unit and for the code to try to figure it out if they don't and report clearly what the unit is. This affects the scaling factor "n" for computing the RESI effect size.
+- How should CI covariance and reference distributions be derived for the
+  active per-term `n` normalization, especially when `n` and robust covariance
+  `cluster` differ? The point estimator reports both the design variation
+  level and the independent-unit count; the CI theory must justify its
+  normalization under the assumed asymptotic regime rather than inherit a
+  single L-/CS-RESI sample-size convention.
 - `glmer` should (generalized linear mixed models) be in scope for this
   goal, or only Gaussian `lmer`/`lme`. But let's hold off for now until we've validate mixed models and gams.
 
-**`level` option implemented (2026-09-25):** `resi_pe.lmerMod` and
-`resi_pe.lme` both gained a `level` argument controlling which grouping
-factor's number of groups is used as the RESI's sample-size scaling `n`.
-Default (`level = NULL`) is the finest/lowest clustering level (e.g. the
-child/subject level in a 3-level nested design), matching the first entry of
-`summary(model)$ngrps` (`lmerMod`) or `summary(model)$dims$ngrps` (`lme`) —
-this preserves the exact prior default behavior. `level` can be set to the
-name of any grouping factor in the model (e.g. `"schoolid"`) or a numeric
-index to compute L-RESI/CS-RESI relative to a coarser level's `n` instead.
-Both L-RESI and CS-RESI (and the anova-table versions) use the same chosen
-`N`, following the existing `geeglm`/`glmgee` L-RESI/CS-RESI convention
-(only the variance estimator differs between L- and CS-RESI, not the sample
-size). Implemented via a shared internal helper `.resiMixedLevelInfo()` in
-`RESI/R/resi_pe.R`. This does not yet address the "auto-detect and report
-the unit" half of the design question above — `level` must currently be set
-explicitly by the user; auto-detection is still open.
+**Superseded `level` API (2026-09-25):** An earlier implementation exposed
+one model-wide `level` choice and paired that count with L-/CS-RESI. It did
+not support a different normalizer by fixed-effect term. Its renamed source
+snapshots are `resi_pe_lmerMod_deprecated()` and `resi_pe_lme_deprecated()`
+in `RESI/deprecated/resi_pe_mixed_deprecated.R`, excluded from package
+builds.
+
+**Common level-based normalizing `n` (2026-09-30):** The active
+`resi_pe.lmerMod`/`resi_pe.lme` return one `RESI` per coefficient and ANOVA
+term, using the same normalizing count for every term in a model. `level`
+selects that count from the random-effect hierarchy, ordered from outermost
+to innermost grouping. For `egsingle`, school is level 1 and student is
+level 2; the calibration uses `level = 2`, so every coefficient and ANOVA
+term is normalized by the number of students. If `level` is omitted, level 1
+is selected and a message names the grouping factor used. A positive scalar
+`n` can explicitly override the selected group count. `Variation level`
+continues to describe where each design term changes, while `n level` reports
+the common grouping used for normalization.
+
+The calibration uses the same ML/model-based estimator for the full-data
+reference and every replicate: `vcovfunc = stats::vcov`, with no robust
+cluster argument. Implemented in `RESI/R/resi_pe_mixed.R`; tests:
+`RESI/tests/testthat/test-resi-mixed-scale.R`.
 
 **Mixed-model asymptotics note (2026-09-28):** Added
 `notes/resi_mixed_model_levels.qmd`/`.html` with references and formulas for
@@ -221,11 +231,16 @@ within-cluster coefficients use `sqrt(n)` when both `g -> infinity` and
 for `n/g` in that increasing-cluster-size regime. Under bounded cluster sizes,
 `n/g` stays bounded and the usual common `sqrt(g)` regime applies. A true
 three-level theorem requires a specified growth regime for schools, students,
-and occasions; the current `level` option is therefore a practical scaling
-choice, not a completed universal three-level asymptotic result. The note
+and occasions; automatic term variation mapping and chosen `n` are therefore
+practical scaling choices, not a completed universal three-level asymptotic result. The note
 also records the sandwich form `A^{-1} B A^{-1}`, the moment/design
 conditions, and references Lyu & Welsh (2022), Jiang (1996, 1998), and Xie &
 Yang (2003).
+
+**Historical implementation notes (superseded 2026-09-29):** The following
+2026-09-25 entries describe the former mixed-model L-/CS-RESI implementation.
+They are retained as development history only; the current API and code are
+summarized above, and the old functions are archived outside package builds.
 
 **Bug fix (2026-09-25):** `resi_pe.lmerMod`'s CS-RESI computation looked up
 a data column literally named after `lme4`'s grouping-factor label (e.g.
@@ -320,23 +335,58 @@ done." Proposed for `gamm`:
 **Description:** For each new method (Goals 2-4), follow the paper's three-step
 verification.
 
-**5a. Simulation-internal-consistency / calibration check (START HERE).**
-Before any new RESI-variance formula is derived (we don't yet have one for
-`lmer`/`lme`/`gam`/`gamm`), confirm the plasmode resampling machinery itself is
-sound: draw resamples from the full `egsingle` (and/or `muscatine`) data, refit
-the model in each replicate, and check that as replicate sample size grows,
-  (i) the Monte Carlo average of the fixed-effect coefficients converges to the
-      full-data (population) coefficient estimates,
-  (ii) the Monte Carlo average of the variance components (residual variance,
-       random-effect variances/covariances, or smoothing parameters for `gam`)
-       converges to the full-data values,
-  (iii) the Monte Carlo *standard error* (empirical SD across replicates) of
-       each coefficient/variance-component estimator converges to the
-       full-data model-based (or sandwich/cluster-robust) standard error.
-This is exactly analogous to `simCalibrationSim`'s existing calibration checks
-for `lm`/`glm`, but does **not** yet include a RESI-variance check, since that
-requires Goal 2/3's (not-yet-derived) asymptotic variance of the RESI for these
-model types.
+**5a. Hybrid-plasmode calibration check (primary method).** For each
+replicate, sample schools with replacement from the full sample, then sample
+students with replacement within each selected source school. Each student
+contributes all observed measurement rows and receives a new ID; the student
+sample size per generated school is proportional to the source school's
+observed size and scaled to average approximately `n_per_site`. Generate
+outcomes from the full-sample ML Model A fixed effects and variance
+components, using centered/rescaled school and student BLUP pools for fresh
+random effects and fresh Normal residual errors. Refit every generated data
+set using REML. Thus the covariate design is resampled hierarchically but no
+real outcomes are resampled.
+
+For each design cell, report and check:
+  (i) the number of successful fits;
+  (ii) fixed-effect Monte Carlo means and bias relative to full-data fitted
+    coefficients;
+  (iii) variance-component Monte Carlo means and relative bias relative to
+     the full-data fit;
+  (iv) empirical Monte Carlo SD of each fixed-effect estimate, mean
+    model-reported SE, and their ratio (`mean_model_se / mc_sd`, target
+    1); also plot Monte Carlo coefficient-error SD relative to the
+    full-sample ML SE, with both scaled by `sqrt(n_schools)` for the
+    intercept/school-level terms and by `sqrt(n_schools * n_per_site)` for
+    student/time-varying terms. The full-sample ML SE is fixed across cells;
+    dashed coefficient-colored curves show the error/SE ratios, and the
+    solid horizontal reference is 1; and
+  (v) for the new common-level RESI point estimator, the full-data RESI
+    target, Monte Carlo mean, bias, Monte Carlo SD, and the common
+    `Variation level`, `n level`, and normalizing count `n`, for both
+    coefficient and ANOVA terms. Because proportional within-school
+    resampling yields variable realized sample sizes, report the mean and
+    SD of replicate `n` (`n` and `n_sd`).
+
+The RESI point-estimator calibration in (v) is distinct from calibration of
+the **sampling variance or confidence intervals of the RESI estimator**.
+We do not claim RESI CI/variance validation until the mixed-model RESI
+covariance theory is derived (Goal 2). Use the joint hybrid grid
+`n_schools = c(15,30,60,100) x n_per_site = c(25,100,200)`, excluding
+`n_schools = 200` and `n_per_site = 50` per the 2026-10-06 decision. This
+gives 12 cells.
+Use 1000 replicates per cell. Sample schools with replacement from the 60
+observed schools, then students with replacement within each selected school;
+scale the per-school student draw in proportion to its observed size, so the
+expected average is `n_per_site`. Re-key every sampled school/student and
+generate fresh random effects. The separate site-count-only grid is not part
+of the reported calibration.
+For (v), the full-data RESI reference uses the full-sample ML fit and
+replicate estimates use REML fits. Both use model-based covariance
+(`vcovfunc = stats::vcov`) and the same common student-level normalizing
+level (`level = 2`). Report the distinction between ML reference/DGP
+parameters and REML replicate estimation when interpreting finite-sample
+bias.
 
 **Working model formulas for `egsingle` (confirmed 2026-09-04 — fit with and
 without a random slope for `year`):**
@@ -536,7 +586,8 @@ the corrected direct-DGP synthetic results above. Figure:
 Both the synthetic and plasmode fixed-`n_per_site` diagnostics (tables +
 figures) are now included in `calibration_report.Rmd`/`.html`.
 
-**Hybrid plasmode simulation (2026-09-24):** Built a middle-ground design
+**Historical fixed-covariate hybrid plasmode (2026-09-24; superseded
+2026-10-06):** Built a middle-ground design
 between the direct-DGP synthetic simulation and the real-data plasmode
 bootstrap: same fixed covariate design and fresh residual-error generation
 as the direct-DGP synthetic simulation, but the school and child random
