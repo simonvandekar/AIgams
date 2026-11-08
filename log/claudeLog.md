@@ -781,3 +781,13 @@ Output files reorganized to follow project directory structure:
   lines ~175-200
 
 
+
+#### Verification of Corrected Results
+Confirmed that calibration report now shows correct behavior:
+- School-level term RESI bias slopes: ~0.0002 (random noise, formerly ~0.003 indicating bug)
+- Term-specific sample size normalization confirmed working correctly
+- Intercept and school-level covariates use n = n_schools (60, 100, etc.)
+- Student-level and observation-level terms use n = n_schools × n_per_site (1721, etc.)
+- Full simulation re-run with 1000 replicates × 4 n_schools values completed
+- Calibration report regenerated (calibration_report.html)
+
