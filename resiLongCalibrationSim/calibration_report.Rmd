@@ -288,7 +288,166 @@ kable(widevc3, digits = 2, row.names = FALSE,
 ```
 
 ```{r fig-hybrid-fixedn, fig.width=14, fig.height=10, fig.cap="Joint hybrid plasmode calibration across n_schools and n_per_site. The third row shows scaled Monte Carlo coefficient-error SD divided by the fixed scaled full-sample ML SE; dashed term-colored curves are compared with the solid reference at 1. Intercept and school-level terms use n_schools; student/time terms use n_schools times n_per_site. Other rows show fixed-effect SE ratios, variance-component relative bias, RESI coefficient bias, and RESI ANOVA-term bias. Columns are n_schools values; y-scales are shared within each row."}
-knitr::include_graphics("hybrid_plasmode/figures/longitudinal_calibration_fixedN_hybrid.png")
+
+# Generate calibration figure directly from data (reproducible)
+fe_terms <- unique(hybrid_fixedn_summary$param[grepl("^beta_", hybrid_fixedn_summary$param)])
+vc_terms <- unique(hybrid_fixedn_summary$param[!grepl("^beta_", hybrid_fixedn_summary$param)])
+resi_coef_terms <- unique(hybrid_fixedn_resi_summary$term[hybrid_fixedn_resi_summary$table == "coefficients"])
+resi_anova_terms <- unique(hybrid_fixedn_resi_summary$term[hybrid_fixedn_resi_summary$table == "anova"])
+
+.sim_pal <- c(
+  "#1F77B4", "#D62728", "#2CA02C", "#FF7F0E", "#9467BD",
+  "#8C564B", "#E377C2", "#17BECF", "#BCBD22", "#7F7F7F"
+)
+fe_cols <- setNames(.sim_pal[seq_along(fe_terms)], fe_terms)
+vc_cols <- setNames(.sim_pal[seq_along(vc_terms)], vc_terms)
+resi_coef_cols <- setNames(.sim_pal[seq_along(resi_coef_terms)], resi_coef_terms)
+resi_anova_cols <- setNames(.sim_pal[seq_along(resi_anova_terms)], resi_anova_terms)
+
+n_per_site.vec <- sort(unique(hybrid_fixedn_summary$n_per_site))
+n_schools.vec  <- sort(unique(hybrid_fixedn_summary$n_schools))
+
+row_limits <- function(values, reference = 0) {
+  values <- c(values, reference)
+  limits <- range(values, na.rm = TRUE)
+  padding <- max(diff(limits) * 0.08, 0.05)
+  limits + c(-padding, padding)
+}
+
+# Compute limits for each row
+fe_limits <- row_limits(hybrid_fixedn_summary$se_ratio, 1)
+vc_summary <- hybrid_fixedn_summary[hybrid_fixedn_summary$param %in% vc_terms, ]
+vc_bias <- 100 * vc_summary$bias / vc_summary$truth
+vc_limits <- row_limits(vc_bias, 0)
+se_ratio_values <- hybrid_fixedn_summary$scaled_mc_error_sd_ratio[
+  hybrid_fixedn_summary$param %in% fe_terms]
+se_limits <- row_limits(se_ratio_values, 1)
+resi_coef_bias <- hybrid_fixedn_resi_summary$bias_resi[hybrid_fixedn_resi_summary$table == "coefficients"]
+resi_anova_bias <- hybrid_fixedn_resi_summary$bias_resi[hybrid_fixedn_resi_summary$table == "anova"]
+resi_coef_limits <- row_limits(resi_coef_bias, 0)
+resi_anova_limits <- row_limits(resi_anova_bias, 0)
+
+# Set up multi-panel layout
+layout(
+  matrix(seq_len(5L * (length(n_schools.vec) + 1L)), nrow = 5L, byrow = TRUE),
+  widths  = c(rep(3.4, length(n_schools.vec)), 2.0),
+  heights = rep(1, 5)
+)
+
+# Row 1: fixed-effect SE calibration
+for (ns in n_schools.vec) {
+  sub <- hybrid_fixedn_summary[hybrid_fixedn_summary$n_schools == ns & 
+                               hybrid_fixedn_summary$param %in% fe_terms, ]
+  par(mar = c(2.8, 3.2, 2.0, 0.4), mgp = c(1.9, 0.45, 0))
+  plot(NULL, xlim = range(n_per_site.vec), ylim = fe_limits,
+       xlab = "n_per_site", ylab = "mean_model_se / mc_sd",
+       main = paste0("n_schools = ", ns), log = "x", xaxt = "n", bty = "l")
+  axis(1, at = n_per_site.vec, labels = n_per_site.vec, mgp = c(1.7, 0.35, 0))
+  abline(h = 1, lty = 2, col = "gray40")
+  for (term in fe_terms) {
+    td <- sub[sub$param == term, ]
+    td <- td[order(td$n_per_site), ]
+    lines(td$n_per_site, td$se_ratio, col = fe_cols[[term]], lwd = 2)
+    points(td$n_per_site, td$se_ratio, col = fe_cols[[term]], pch = 16, cex = 0.8)
+  }
+}
+par(mar = c(0.5, 0.3, 0.5, 0.3))
+plot.new()
+legend("center", legend = fe_terms, col = fe_cols[fe_terms],
+       lwd = 2, pch = 16, bty = "n", cex = 0.85, title = "Fixed effect")
+
+# Row 2: variance components relative bias
+for (ns in n_schools.vec) {
+  sub <- hybrid_fixedn_summary[hybrid_fixedn_summary$n_schools == ns & 
+                               hybrid_fixedn_summary$param %in% vc_terms, ]
+  par(mar = c(2.8, 3.2, 2.0, 0.4), mgp = c(1.9, 0.45, 0))
+  plot(NULL, xlim = range(n_per_site.vec), ylim = vc_limits,
+       xlab = "n_per_site", ylab = "Relative bias (%)",
+       main = paste0("n_schools = ", ns), log = "x", xaxt = "n", bty = "l")
+  axis(1, at = n_per_site.vec, labels = n_per_site.vec, mgp = c(1.7, 0.35, 0))
+  abline(h = 0, lty = 2, col = "gray40")
+  for (term in vc_terms) {
+    td <- sub[sub$param == term, ]
+    td$rel_bias_pct <- 100 * td$bias / td$truth
+    td <- td[order(td$n_per_site), ]
+    lines(td$n_per_site, td$rel_bias_pct, col = vc_cols[[term]], lwd = 2)
+    points(td$n_per_site, td$rel_bias_pct, col = vc_cols[[term]], pch = 16, cex = 0.8)
+  }
+}
+par(mar = c(0.5, 0.3, 0.5, 0.3))
+plot.new()
+legend("center", legend = vc_terms, col = vc_cols[vc_terms],
+       lwd = 2, pch = 16, bty = "n", cex = 0.85, title = "Variance component")
+
+# Row 3: scaled MC error SD ratio
+for (ns in n_schools.vec) {
+  sub <- hybrid_fixedn_summary[hybrid_fixedn_summary$n_schools == ns & 
+                               hybrid_fixedn_summary$param %in% fe_terms, ]
+  par(mar = c(2.8, 3.2, 2.0, 0.4), mgp = c(1.9, 0.45, 0))
+  plot(NULL, xlim = range(n_per_site.vec), ylim = se_limits,
+       xlab = "n_per_site", ylab = "scaled MC error SD / ML SE",
+       main = paste0("n_schools = ", ns), log = "x", xaxt = "n", bty = "l")
+  axis(1, at = n_per_site.vec, labels = n_per_site.vec, mgp = c(1.7, 0.35, 0))
+  abline(h = 1, lty = 1, col = "black", lwd = 1.5)
+  for (term in fe_terms) {
+    td <- sub[sub$param == term, ]
+    td <- td[order(td$n_per_site), ]
+    lines(td$n_per_site, td$scaled_mc_error_sd_ratio, col = fe_cols[[term]], lwd = 2, lty = 2)
+    points(td$n_per_site, td$scaled_mc_error_sd_ratio, col = fe_cols[[term]], pch = 16, cex = 0.8)
+  }
+}
+par(mar = c(0.5, 0.3, 0.5, 0.3))
+plot.new()
+legend("center", legend = fe_terms, col = fe_cols[fe_terms],
+       lwd = 2, pch = 16, bty = "n", cex = 0.85, title = "Fixed effect")
+
+# Row 4: RESI coefficient bias
+for (ns in n_schools.vec) {
+  sub <- hybrid_fixedn_resi_summary[hybrid_fixedn_resi_summary$n_schools == ns & 
+                                    hybrid_fixedn_resi_summary$table == "coefficients", ]
+  par(mar = c(2.8, 3.2, 2.0, 0.4), mgp = c(1.9, 0.45, 0))
+  plot(NULL, xlim = range(n_per_site.vec), ylim = resi_coef_limits,
+       xlab = "n_per_site", ylab = "RESI bias",
+       main = paste0("n_schools = ", ns), log = "x", xaxt = "n", bty = "l")
+  axis(1, at = n_per_site.vec, labels = n_per_site.vec, mgp = c(1.7, 0.35, 0))
+  abline(h = 0, lty = 2, col = "gray40")
+  for (term in resi_coef_terms) {
+    td <- sub[sub$term == term, ]
+    td <- td[order(td$n_per_site), ]
+    if (nrow(td) > 0) {
+      lines(td$n_per_site, td$bias_resi, col = resi_coef_cols[[term]], lwd = 2)
+      points(td$n_per_site, td$bias_resi, col = resi_coef_cols[[term]], pch = 16, cex = 0.8)
+    }
+  }
+}
+par(mar = c(0.5, 0.3, 0.5, 0.3))
+plot.new()
+legend("center", legend = resi_coef_terms, col = resi_coef_cols[resi_coef_terms],
+       lwd = 2, pch = 16, bty = "n", cex = 0.75, title = "Coefficient")
+
+# Row 5: RESI ANOVA bias
+for (ns in n_schools.vec) {
+  sub <- hybrid_fixedn_resi_summary[hybrid_fixedn_resi_summary$n_schools == ns & 
+                                    hybrid_fixedn_resi_summary$table == "anova", ]
+  par(mar = c(2.8, 3.2, 2.0, 0.4), mgp = c(1.9, 0.45, 0))
+  plot(NULL, xlim = range(n_per_site.vec), ylim = resi_anova_limits,
+       xlab = "n_per_site", ylab = "RESI bias",
+       main = paste0("n_schools = ", ns), log = "x", xaxt = "n", bty = "l")
+  axis(1, at = n_per_site.vec, labels = n_per_site.vec, mgp = c(1.7, 0.35, 0))
+  abline(h = 0, lty = 2, col = "gray40")
+  for (term in resi_anova_terms) {
+    td <- sub[sub$term == term, ]
+    td <- td[order(td$n_per_site), ]
+    if (nrow(td) > 0) {
+      lines(td$n_per_site, td$bias_resi, col = resi_anova_cols[[term]], lwd = 2)
+      points(td$n_per_site, td$bias_resi, col = resi_anova_cols[[term]], pch = 16, cex = 0.8)
+    }
+  }
+}
+par(mar = c(0.5, 0.3, 0.5, 0.3))
+plot.new()
+legend("center", legend = resi_anova_terms, col = resi_anova_cols[resi_anova_terms],
+       lwd = 2, pch = 16, bty = "n", cex = 0.75, title = "ANOVA term")
 ```
 
 ## RESI point-estimator calibration
