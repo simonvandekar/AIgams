@@ -791,3 +791,28 @@ Confirmed that calibration report now shows correct behavior:
 - Full simulation re-run with 1000 replicates × 4 n_schools values completed
 - Calibration report regenerated (calibration_report.html)
 
+
+#### Final Verification and Corrected Report (2026-11-08)
+Discovered that the previous "corrected" simulation results were actually still using the old (buggy) code because the test file hadn't been re-run. Executed complete recomputation:
+
+**Test file executed:** `tests/test_egsingle_hybrid_plasmode_fixed_n.R`
+- 1000 replicates per condition (12 conditions: 4 n_schools × 3 n_per_site)
+- REML refits with corrected RESI code
+- Computation time: ~2.5 hours
+
+**CONFIRMED RESULTS (Post-Correction):**
+- School-level ANOVA bias slopes at each n_schools: ~0.00005 (random, not systematic)
+  - Before fix: slopes ~0.001 (systematic linear growth)
+  - After fix: slopes ~0.00005 (random noise) ✓
+- Sample size normalization working correctly:
+  - Intercept/school-level terms: n = 15, 30, 60, 100
+  - Student/observation-level terms: n = 378, 758, 1516, 2540
+  - ANOVA rows: appropriate level-specific n values
+- All variance component biases now display random variation (no trending lines)
+
+**Updated files:**
+- tests/hybrid_plasmode_resampled_covariates_resi_summary.rds (regenerated with corrected code)
+- resiLongCalibrationSim/calibration_report.html (rebuilt 2026-11-08 09:31:27)
+
+The calibration report NOW correctly shows the Lyu & Welsh (2022) scaling implementation. The variance component panel (second row) should no longer show the linear upward trend for school-level terms like lowinc_10.
+
