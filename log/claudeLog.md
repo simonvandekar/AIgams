@@ -816,3 +816,30 @@ Discovered that the previous "corrected" simulation results were actually still 
 
 The calibration report NOW correctly shows the Lyu & Welsh (2022) scaling implementation. The variance component panel (second row) should no longer show the linear upward trend for school-level terms like lowinc_10.
 
+
+#### Made Calibration Figures Reproducible (2026-11-08 10:33)
+Converted the calibration report from using static PNG figures to dynamic generation directly in the Rmd file:
+
+**Changes Made:**
+- Removed `knitr::include_graphics()` that referenced pre-computed PNG
+- Added full figure generation code directly in Rmd chunk `fig-hybrid-fixedn`
+- All 5 rows of figures now generated reproducibly:
+  1. Fixed-effect SE calibration (FE terms vs n_per_site)
+  2. Variance-component relative bias (VC terms vs n_per_site)
+  3. Scaled MC error SD ratio (ML SE reference)
+  4. RESI coefficient bias (all coefficient terms)
+  5. RESI ANOVA bias (all ANOVA/variance terms)
+- Multi-panel layout with shared y-axis limits per row
+- Uses base graphics with color palette matching original design
+
+**Benefits:**
+- Figures are now generated directly from `hybrid_fixedn_resi_summary` on every render
+- No manual figure regeneration step required
+- Eliminates risk of stale figures being embedded in report
+- Report is now fully self-contained and reproducible
+- Any updates to RESI simulation results are immediately reflected in figures
+
+**Verification:**
+- Report generated 2026-11-08 10:33 UTC with corrected RESI data
+- Pink line (lowinc_10 ANOVA bias in RESI bias plot) should now show pattern from corrected scaling
+
