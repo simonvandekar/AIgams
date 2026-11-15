@@ -2,33 +2,34 @@
 title: "Level-based RESI normalization for mixed models"
 subtitle: "Mathematical basis for the `n` and `level` arguments to `resi_pe.lmerMod()`/`resi_pe.lme()`"
 author: "RESI package project notes"
-date: 2026-09-25
+date: 2026-11-15
 format:
   html:
     toc: true
     number-sections: true
+    embed-resources: true
 ---
 
 ## Purpose
 
-This note documents common level-based RESI normalization for `lmerMod`
-(`lme4`) and `lme` (`nlme`) models. The current interface uses:
+This note documents the RESI normalization for `lmerMod` (`lme4`) and `lme`
+(`nlme`) models. The current interface (updated 2026-11-15) uses:
 
-- `n`: the normalizing count used to convert each coefficient/term Wald
-  statistic into a RESI; one selected count is used for every coefficient and
-  ANOVA term;
-- `level`: the random-effect hierarchy level whose group count supplies the
-  common `n`, ordered from outermost to innermost grouping. For `egsingle`,
-  school is level 1 and student is level 2. If omitted, level 1 is selected
-  with a message naming the grouping factor.
+- a **term-specific** normalizing count `n` (Lyu & Welsh, 2022): terms that
+  are constant within the outermost grouping factor (the intercept and
+  school-level covariates) use the number of outermost groups $g$; all other
+  terms use the number of groups at `level`;
+- `level`: the hierarchy level, ordered outermost to innermost, whose group
+  count normalizes the within-cluster terms. For `egsingle`, school is level
+  1 and student is level 2. If omitted, level 1 is used with a message;
+- an optional scalar `n` that overrides the count for every term.
 
-The coefficient and ANOVA tables can report both the literal `Variation
-level` (where the fixed-effect design changes) and the `n level` (which
-independent units are counted). For example, `year` changes across
-measurement occasions within a student, so its variation level is the
-observation-within-student level. With `level = 2`, its normalizer, like all
-other terms, counts students. This choice is important: it encodes the
-assumed asymptotic sampling unit for the model as a whole.
+The tables report the `Variation level` (where the fixed-effect design
+changes), the `n level` (the grouping factor whose count is `n`), and
+`Var prop <group>` columns (the share of the design column's variation
+between units of each grouping factor). For example, `year` changes across
+occasions within a student; with `level = 2` its `n` counts students, while
+`lowinc_10` is constant within school and its `n` counts schools.
 
 The note also covers the mathematical constraint on valid cluster-robust
 covariance for nested random effects. It draws on the RESI definition in
@@ -98,11 +99,11 @@ participants with more repeated measurements to emulate one draw per
 participant) and taking its HC0 sandwich variance. **Both L-RESI and
 CS-RESI use the same $N$** (the number of participants) -- only the variance
 estimator differs. The GEE methods retain these L-RESI/CS-RESI definitions.
-The former mixed-model L-/CS-RESI methods are archived under
-`RESI/deprecated/` and excluded from package builds. The active `lmerMod`/
-`lme` methods instead return one RESI per coefficient and ANOVA term using a
-single common normalizer selected by `level`; they do not label the result
-L-RESI or CS-RESI.
+The former mixed-model L-/CS-RESI methods have been removed (they remain in
+git history). The active `lmerMod`/`lme` methods instead return one RESI per
+coefficient and ANOVA term with a term-specific normalizer ($g$ for
+between-cluster terms, the `level` count otherwise); they do not label the
+result L-RESI or CS-RESI.
 
 ## 3. What changes with more than one clustering level
 
@@ -124,10 +125,11 @@ $$D_N(\hat\beta-\beta) \;\overset{d}{\longrightarrow}\;
   \mathcal N(0,\,C_\beta),$$
 
 where $D_N$ may be scalar or block-diagonal, rather than necessarily
-$\sqrt{N_k}I$. The active mixed-model API therefore accepts one common
-normalizing count `n`, selected by the random-effect hierarchy argument
-`level`. This is a practical, explicit asymptotic sampling-unit convention,
-not a claim that every grouping level has a standalone mixed-model limit.
+$\sqrt{N_k}I$. The active mixed-model API uses the block normalization of
+Lyu & Welsh (2022): $g$ for terms constant within the outermost cluster and
+the `level` count for the rest. For three levels this is a practical
+convention, not a claim that every grouping level has a standalone
+mixed-model limit.
 
 CS-RESI generalizes the same way: reweight rows by $1/n_i^{(k)}$, where
 $n_i^{(k)}$ is the number of rows belonging to level-$k$ unit $i$ (e.g.,
@@ -259,7 +261,7 @@ cluster sizes they remain bounded. What is required is that the normalized
 design cross-products and covariance limits exist and remain nonsingular.
 For a general three-level mixed model, deriving the exact block matrix
 $C_\beta$ and its cross-level off-diagonal terms is still an open
-mathematical task for this project; the current common-level scaling
+mathematical task for this project; the current term-specific scaling
 convention is not a completed three-level asymptotic theorem. It reports the
 covariate's design-variation level separately from the grouping selected for
 normalization, and permits an explicit scalar override when the user's
@@ -452,51 +454,47 @@ factor. This constraint applies to covariance clustering; it does not
 constrain `n`, which independently records the assumed normalizing count
 for the target effect.
 
-### 4.3 Common normalizer and covariance choice
+### 4.3 Normalizer and covariance choice
 
-The active interface uses one common `n` for every coefficient and ANOVA
-term. `level` selects the random-effect hierarchy count; for `egsingle`,
-`level = 2` selects the student grouping and gives `n = 1721` in the full
-sample. A positive scalar `n` can override that count. The covariance choice
-is separate: the calibration uses the model-based `stats::vcov` for both the
-full-data reference and simulated fits, while robust covariance remains an
-optional estimator for other analyses.
-
-The code still reports the lowest observed design level where each term
-changes as `Variation level`. `n level` reports the common grouping selected
-by `level`. If `level` is omitted, level 1 is selected and a message names
-the grouping factor used.
+The normalizer and the covariance are chosen separately. `n` is
+term-specific ($g$ for between-school terms, the `level` count for the
+rest); the calibration uses the model-based `stats::vcov` for both the
+full-data reference and the simulated fits, while robust covariance (with
+`cluster` at least as coarse as the outermost grouping factor) remains an
+option.
 
 ## 5. Mapping to the implementation
 
 `RESI/R/resi_pe_mixed.R`:
 
 - `.resiMixedScaleMap()` inspects the fixed-effect model matrix and grouping
-  memberships, reports `Variation level`, and applies one level-selected
-  independent-unit count `n` to every term.
+  memberships, reports `Variation level`, and assigns each term its `n`
+  ($g$ if the term is constant within the outermost grouping factor,
+  otherwise the group count at `level`).
 - The coefficient table includes `Term`, `RESI`, and `n`; by default it also
-  includes `Variation level` and `n level`. ANOVA rows receive the same
-  term-specific metadata. `include_level = FALSE` hides only the two level
-  columns, not `n`.
-- `n` is passed to `z2S()`/`chisq2S()` for RESI conversion and is common to
-  all terms. `level` selects its grouping count; an unnamed positive scalar
-  `n` overrides it.
+  includes `Variation level`, `n level` and `Var prop <group>`. ANOVA rows
+  receive the same term-level metadata. `include_level = FALSE` hides the
+  level and proportion columns, not `n`.
+- `n` is passed to `z2S()`/`chisq2S()`.
+
+`RESI/R/mixed_simulations.R` holds the calibration targets
+(`lyuLimitResi()`, the $g, m \to \infty$ limit; `expectedDesignResi()`, the
+exact fixed-$m$ value; `designAveragedSe()`) and `hybridPlasmodeSim()`.
 
 ## 6. Worked example (Model A, `mlmRev::egsingle`)
 
-For `math ~ year + female + black + hispanic + size_100 + lowinc_10 + (1 | schoolid/childid)`:
+For `math ~ year + female + black + hispanic + size_100 + lowinc_10 + (1 | schoolid/childid)`
+with `level = 2`:
 
-The new coefficient metadata for this model have this structure:
-
-| Term | `Variation level` | `n level` | Default `n` |
+| Term | `Variation level` | `n level` | `n` (full data) |
 |---|---|---|---:|
 | `year` | observation within child | child | 1721 |
 | `female`, `black`, `hispanic` | child within school | child | 1721 |
-| `size_100`, `lowinc_10` | school | child | 1721 |
-| `(Intercept)` | overall/intercept | child | 1721 |
+| `size_100`, `lowinc_10` | school | school | 60 |
+| `(Intercept)` | overall/intercept | school | 60 |
 
-For this model, use `resi_pe(fit, vcovfunc = stats::vcov, level = 2)` to use
-the model-based covariance and the common student count for every term.
+Use `resi_pe(fit, vcovfunc = stats::vcov, level = 2)` for the model-based
+covariance.
 
 ## 7. Brainstorming: a genuine student-level effect size
 
@@ -599,11 +597,11 @@ for the RESI (Section 1), is nontrivial and not attempted here.
 
 ### 7.4 Empirical (bootstrap) sampling variability at the desired level
 
-The hybrid plasmode simulation developed earlier in this project
-(`tests/test_egsingle_hybrid_plasmode.R`; see `instructions/instructions.md`)
-is, in effect, a way to sidestep this whole question empirically: it draws
-fresh school and child random effects (from rescaled BLUPs) and fresh
-residuals for a *fixed* covariate design, and measures the actual
+The hybrid plasmode simulation (`RESI::hybridPlasmodeSim()`; see
+`instructions/instructions.md`) is, in effect, a way to sidestep this whole
+question empirically: it draws fresh school and child random effects (from
+rescaled BLUPs) and fresh residuals for a hierarchically resampled covariate
+design, and measures the actual
 across-replicate sampling variability of $\hat\beta$, `mc_sd`. That
 quantity already reflects the true joint (school + child + residual)
 sampling variability without requiring a cluster-robust assumption at any
@@ -627,11 +625,8 @@ provide at a single valid level.
   compute the RESI *at a level the user specifies*; it does not address
   automatically choosing or recommending a level based on the study design
   (the original Goal 2 design question in `instructions/instructions.md`).
-- **Confidence intervals.** This note only concerns point estimation. The
-  asymptotic CI machinery (`resi_asymptotic.R`) has not been extended to
-  the cluster-robust, multi-level setting, and the nonparametric bootstrap
-  CI for `resi.lmerMod()`/`resi.lme()` is not yet implemented at all
-  (`resi()` still warns and returns point estimates only).
+- **Confidence intervals.** This note only concerns point estimation; the
+  asymptotic CIs are developed in `notes/resi_mixed_ci.qmd`.
 - **Generalized (non-Gaussian) mixed models.** Not addressed; `resi_pe`
   does not yet have a `glmer` method.
 - **Non-nested / crossed random effects.** Section 4's constraint was

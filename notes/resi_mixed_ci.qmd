@@ -1,0 +1,311 @@
+---
+title: "Asymptotic confidence intervals for mixed-model RESI"
+subtitle: "Derivation note (implemented provisionally; awaiting review)"
+author: "RESI package project notes"
+date: 2026-11-15
+format:
+  html:
+    toc: true
+    number-sections: true
+    embed-resources: true
+---
+
+## Purpose
+
+This note extends the asymptotic CIs of `Manuscript_revision.tex` (Section
+"Confidence Interval Construction": normal, quadratic-form (QF) and
+Cornish--Fisher (CF) intervals built from $\hat\Sigma_R$) to `lmerMod` fits
+with nested random effects, e.g. Model A
+`math ~ year + female + black + hispanic + size_100 + lowinc_10 + (1 | schoolid/childid)`.
+The interval algorithms are unchanged; the new work is the estimator of
+$\Sigma_R$, which must reflect that the independent replicates are
+**schools** (the outermost grouping factor), not observations. Nothing here
+is implemented yet.
+
+## Setup and estimand
+
+Schools $s = 1,\dots,g$ are independent. School $s$ has data
+$(y_s, X_s, Z_s)$ with marginal covariance
+$V_s(\psi) = Z_s G(\psi) Z_s^\top + \sigma^2 I$, where $\psi$ collects the
+variance components ($\tau^2_{\text{school}}, \tau^2_{\text{child}},
+\sigma^2$ for Model A). Define the per-school quantities
+$$
+\mathcal I_s = X_s^\top V_s^{-1} X_s, \qquad
+U_s = X_s^\top V_s^{-1}(y_s - X_s\beta),
+$$
+and their school averages $\bar{\mathcal I} = g^{-1}\sum_s \mathcal I_s$,
+$\bar B = g^{-1}\sum_s U_sU_s^\top$. With population counterparts
+$\mathcal I = E(\mathcal I_s)$ and $B = E(U_sU_s^\top)$,
+$$
+\sqrt g(\hat\beta - \beta) \to N(0, \Sigma_\theta), \qquad
+\Sigma_\theta = \mathcal I^{-1} B \mathcal I^{-1}
+\;(= \mathcal I^{-1} \text{ if the model is correct}).
+$$
+
+For a term with contrast $L$ ($m_1$ rows) and term-specific count $n_k$
+($g$ for between-school terms, $N$ students for within-school terms, as in
+`resi_pe(level = 2)`), the per-unit covariance and standardized coefficient are
+$$
+\Sigma_{\beta,k} = \frac{n_k}{g} L\Sigma_\theta L^\top, \qquad
+R_k = \Sigma_{\beta,k}^{-1/2} L\beta, \qquad S_k = \|R_k\|.
+$$
+At a fixed average cluster size $m$, with $\mathcal I$ the expected
+information of the hybrid plasmode design, this is $S_m$
+(`expectedDesignResi()`); as $m \to \infty$ it converges to the Lyu--Welsh
+value $S_{\text{Lyu}}$ (`lyuLimitResi()`).
+
+The estimator is $\hat R_k = \hat\Sigma_{\beta,k}^{-1/2} L\hat\beta$ with
+$\hat\Sigma_{\beta,k} = n_k L\hat V L^\top$. Here $\hat V$ is the
+model-based `vcov(fit)` $=(\sum_s \hat{\mathcal I}_s)^{-1}$ or the
+school-clustered CR2 sandwich `clubSandwich::vcovCR(fit, cluster = school,
+type = "CR2")`. Then $n_k\|\hat R_k\|^2 = T^2$ is the ordinary Wald
+statistic, and $\hat S_k = \{\max(0, T^2 - m_1)/n_k\}^{1/2}$ and
+$\hat R_k = Z/\sqrt{n_k}$ are the existing `resi_pe` point estimates.
+
+## The role of $n_k$: the intervals do not depend on it
+
+All of the manuscript's intervals depend on $n$ and $\hat\Sigma_R$ only
+through $\hat\Sigma_R / n = \widehat{\operatorname{Var}}(\hat R_k)$:
+
+- The normal interval is $\hat R \pm z\sqrt{\hat\Sigma_R/n}$.
+- The QF noncentralities are $n s^2 \hat v_k^2/\hat\lambda_k$, with
+  $\hat\lambda_k$ the eigenvalues of $\hat\Sigma_R = n\,\widehat{\operatorname{Var}}(\hat R)$.
+- $T^2 = n\|\hat R\|^2$ is the Wald statistic.
+- The null limit is $U_0 = \{\chi^2_{1-\alpha, m_1}/n\}^{1/2}$, on the
+  scale of $R$.
+
+So if we estimate $\operatorname{Var}(\hat R_k)$ directly, the intervals
+are equivariant in $n_k$: changing $n_k$ rescales the estimate, the true
+value and the interval by the same $\sqrt{n_k}$. The choice of $n_k$ (and the
+"$m \to \infty$ vs fixed $m$" question) fixes the *scale and meaning* of the
+target, but not coverage. Coverage depends only on whether
+$\operatorname{Var}(\hat R_k)$ is estimated well and on which target the
+interval is compared to (Section 7).
+
+We therefore pass the existing functions
+`.resi_ci_{normal_signed, normal_unsigned, qf, cf}` a "contrast" with
+`n` $= n_k$ and `Sigma_R` $= n_k\,\widehat{\operatorname{Var}}(\hat R_k)$.
+
+## Influence-function decomposition at the school level
+
+Write $\hat R_k = R(\hat\beta, \hat{\mathcal I}, \hat B, \hat\psi)$. A
+first-order expansion around the population values gives
+$\hat R_k - R_k \approx g^{-1}\sum_s \phi_s + J_\psi(\hat\psi - \psi)$, where
+$$
+\phi_s =
+\underbrace{J_\beta\, \mathcal I^{-1}U_s}_{\text{(a) outcome noise}}
++ \underbrace{J_{\mathcal I}[\mathcal I_s - \mathcal I]}_{\text{(b) design sampling}}
++ \underbrace{J_B[U_sU_s^\top - B]}_{\text{(c) meat sampling, robust only}} .
+$$
+Here $J_\beta = \Sigma_{\beta,k}^{-1/2}L$, and $J_{\mathcal I}[\cdot]$,
+$J_B[\cdot]$ are the directional derivatives of $R$ through
+$\Sigma_{\beta,k}$:
+$$
+d\Sigma_{\beta,k} = \tfrac{n_k}{g} L\{-\mathcal I^{-1}\,d\mathcal I\,\Sigma_\theta
+ - \Sigma_\theta\, d\mathcal I\, \mathcal I^{-1}
+ + \mathcal I^{-1}\, dB\, \mathcal I^{-1}\}L^\top,
+\qquad dR = -\,\mathcal L^{-1}_{\Sigma^{1/2}}(d\Sigma_{\beta,k})\,\Sigma_{\beta,k}^{-1/2}\, R ,
+$$
+(for the model-based covariance $\Sigma_\theta = \mathcal I^{-1}$ there is
+no separate meat and the first bracket is just $-\mathcal I^{-1}\,d\mathcal
+I\,\mathcal I^{-1}$), where $\mathcal L^{-1}_{\Sigma^{1/2}}$ solves the Lyapunov equation for the
+derivative of the matrix square root. This is the same "W-matrix" formula
+already in `.resi_contrast()`. For $m_1 = 1$ it reduces to
+$dR = -R\, d\Sigma_{\beta,k}/(2\Sigma_{\beta,k})$. Evaluating $d\mathcal I$
+and $dB$ directly at each school's deviation avoids any
+$\operatorname{vec}$/Kronecker derivative arrays.
+
+Then
+$$
+\widehat{\operatorname{Var}}(\hat R_k)
+= \frac{1}{g^2}\sum_s \hat\phi_s\hat\phi_s^\top
+ + \hat J_\psi \widehat{\operatorname{Var}}(\hat\psi)\hat J_\psi^\top ,
+$$
+with the $\psi$ term treated as uncorrelated with $\sum_s\phi_s$. Under
+normality $\hat\psi$ is asymptotically independent of $\hat\beta$, and it is
+uncorrelated to first order with functions of the design.
+
+**$n_k$ moves with the design.** For within-school terms $n_k = N =
+\sum_s c_s$, where $c_s$ is the number of level-$k$ units (students) in
+school $s$, so $n_k$ is itself a school-level sum and term (b) must also
+perturb it:
+$d\Sigma_{\beta,k} \mathrel{+}= (c_s - \bar c)\, L\Sigma_\theta L^\top/g$.
+This largely cancels the school-size component of $\mathcal I_s - \mathcal I$.
+Without it the design SD of `year` on `egsingle` is overstated about
+fourfold (0.15 vs 0.039 from a brute-force resampling of school profiles at
+fixed parameters, which the corrected linearization reproduces: 0.038).
+For between-school terms $n_k = g$ is fixed.
+
+**Term (b) is new relative to the lm/glm implementation.** In the
+hybrid plasmode, and in any school-sampling interpretation, the school
+covariate profiles are random, so $\hat{\mathcal I}$ varies across samples
+at rate $g^{-1/2}$. For between-school terms this is first-order: $R$ for
+`lowinc_10` depends on the between-school spread of `lowinc_10` in the
+sampled schools. The targets $S_m$ and $S_{\text{Lyu}}$ are both defined at
+the population of school profiles, so (b) must be included to cover them.
+If the user instead wants inference conditional on the observed schools
+(fixed design), (b) is dropped.
+
+*Observation (not a proposed change):* `.resi_contrast()` for lm/glm
+propagates $\hat A$ and $\hat B$ only through $\hat\theta$
+($dR/d\theta = \partial R/\partial\theta + J_A\,dA/d\theta + J_B\,dB/d\theta$).
+It omits the terms $\psi'_i - A$ and $\psi_i\psi_i^\top - B$ that are
+analogous to (b) and (c). This is exact for $A$ under a fixed design, but
+not in general for $B$. I mention it only because the mixed-model version
+makes these terms explicit.
+
+## Model-based covariance
+
+$\hat\Sigma_{\beta,k} = n_k L\,\mathrm{vcov}(\text{fit})\,L^\top$ depends on
+the data only through $(\hat{\mathcal I}, \hat\psi)$, so (c) is absent.
+
+- **(a)** Under the model, $\operatorname{Var}(\hat\beta \mid X) =
+  (g\bar{\mathcal I})^{-1}$, so the conditional contribution is exactly
+  $J_\beta (g\bar{\mathcal I})^{-1} J_\beta^\top = I_{m_1}/n_k$. That is,
+  $\Sigma_R$ starts from $I$, as in the parametric case of the manuscript.
+- **(b)** $\hat{\mathcal I}_s = X_s^\top V_s(\hat\psi)^{-1}X_s$. For Model A
+  these are exactly the `lyuSchoolStats()` quantities
+  $A_s - b_sb_s^\top/(1/\tau^2_{\text{school}} + c_s)$. In general they are
+  computed per school by Woodbury from lme4's $Z_s$ and $\Lambda$.
+- **($\psi$)** $\Sigma_{\beta,k}$ depends on $\psi$ through $\mathcal I(\psi)$:
+  $J_\psi$ is obtained by finite differences of $R$ in the lme4 covariance
+  parameters, recomputing $\sum_s \mathcal I_s(\psi)$, and
+  $\widehat{\operatorname{Var}}(\hat\psi)$ is the inverse Hessian of the
+  (RE)ML deviance in the same parameters, by `numDeriv`. This is the
+  mixed-model analogue of the manuscript's $\phi$ derivative.
+
+  *Check:* for a between-school term with $m$ large, $R \propto
+  \tau_{\text{school}}^{-1}$ and $\operatorname{Var}(\hat\tau^2) \approx
+  2\tau^4/g$. That gives a $\psi$ contribution of $R^2/(2n_k)$, i.e.
+  $\Sigma_R = 1 + R^2/2$, the familiar normal-theory result.
+
+## Robust (CR2, clustered at school) covariance
+
+$\hat\Sigma_{\beta,k} = n_k L\hat V_{\text{CR2}}L^\top$, where
+$\hat V_{\text{CR2}} = (g\bar{\mathcal I})^{-1}\{\sum_s
+\tilde U_s\tilde U_s^\top\}(g\bar{\mathcal I})^{-1}$ uses the CR2-adjusted
+residuals $\tilde U_s$.
+
+- **(a)** Uses $\hat{\mathcal I}^{-1}\hat U_s$; the empirical second moment
+  replaces the model-based $I/n_k$.
+- **(b)** As in the model-based case.
+- **(c)** Uses $\hat U_s\hat U_s^\top - \bar B$, with unadjusted $\hat U_s$.
+  The CR2 adjustment is $O(1/g)$, analogous to how the lm code applies the HC
+  weights only to $B$.
+- **($\psi$) is dropped.** The sandwich $\mathcal I(\psi)^{-1}B(\psi)
+  \mathcal I(\psi)^{-1}$ is minimized, in the Loewner order, at the true
+  $\psi$, where GLS is efficient. So every contrast of it is stationary in
+  $\psi$ and $J_\psi = 0$. This holds when the working covariance is
+  correct, which is the case in the plasmode. Under a misspecified $V$ it is
+  an approximation.
+
+## Numerical checks on `egsingle` (implemented)
+
+- The Woodbury/sparse-Cholesky computations reproduce lme4 exactly: the
+  ML/REML deviance, `vcov(fit)`, $\hat\beta$, $\sum_s\hat{\mathcal I}_s$,
+  $\sum_s \hat U_s = 0$, and `lyuSchoolStats()` for each school.
+- Predicted SD of $\hat R_k$ (model-based, with the design term) on the full
+  data compared with the plasmode Monte Carlo SD at $g = 60$, $m = 25$
+  (observed $m \approx 28.7$):
+
+| Term | Predicted | MC ($g=60, m=25$) |
+|---|---:|---:|
+| (Intercept) | 0.132 | 0.132 |
+| year | 0.056 | 0.061 |
+| female | 0.024 | 0.026 |
+| black | 0.027 | 0.029 |
+| hispanic | 0.025 | 0.027 |
+| size_100 | 0.130 | 0.132 |
+| lowinc_10 | 0.147 | 0.155 |
+
+The within-school terms are predicted about 7% low, which is expected
+because $\sqrt{28.7/25} = 1.07$.
+
+## Intervals
+
+These are the existing algorithms, with $(n_k, \hat\Sigma_R)$ from
+Sections 3–6:
+
+| Table | Normal | QF | CF |
+|---|---|---|---|
+| Coefficients (signed, $m_1=1$) | $\hat R \pm z\,\widehat{\mathrm{se}}$ | — | signed CF, with skewness from $\hat\phi_s$, sample size $g$ |
+| ANOVA (unsigned) | Algorithm 1 (truncated, $U_0$ at boundary) | Algorithm 2 | Algorithm 3 |
+
+The signed-CF skewness needs per-replicate influence values. I will use the
+school-level $\hat\phi_s$ with $g$ in place of $n$:
+$\gamma_1 = g^{-1/2}\,\overline{\phi^3}/\overline{\phi^2}^{3/2}$. The
+$\psi$ term is not a sum over schools and is treated as Gaussian. For the
+model-based version, (a) is represented by $J_\beta\mathcal I^{-1}\hat U_s$
+for this purpose.
+
+## Targets and expected coverage
+
+Each interval is evaluated against both targets:
+
+- **$S_m$** (`expectedDesignResi(fit, m)`): the fixed-$m$ value. Both
+  covariance choices should give coverage near the nominal level as $g$
+  grows, with some under-coverage at $g = 15$. That is the usual small-$g$
+  behaviour of cluster-robust and normal-quantile intervals; CR2 targets
+  the bias of $\hat V$, not the quantile.
+- **$S_{\text{Lyu}}$**: for within-school terms, $S_m = S_{\text{Lyu}}$
+  (no finite-$m$ bias), so coverage should match. For between-school terms
+  (intercept, `size_100`, `lowinc_10`), $S_m - S_{\text{Lyu}} = O(1/m)$
+  while the interval width is $O(g^{-1/2})$. Coverage of $S_{\text{Lyu}}$
+  will therefore drop for large $g$ with small $m$, and the gap is the
+  fixed-$m$ bias already shown in the calibration figure. This is a property
+  of the estimand, not the interval.
+
+## Implementation (provisional, pending review)
+
+- `RESI/R/resi_mixed_ci.R`:
+  - `.mixedCiGls()` evaluates $V^{-1}X$, $\hat\beta$, the information and
+    the (RE)ML deviance at any $\psi$ by Woodbury with a sparse Cholesky of
+    $\Lambda^\top Z^\top Z\Lambda + I$. `.mixedCiBase()` errors unless every
+    random effect is nested in the cluster (default: the grouping factor
+    with the fewest levels).
+  - `.mixedCiClusterPieces()` returns $\hat{\mathcal I}_s$ and $\hat U_s$;
+    `.mixedCiContrast()` forms the school influence values (a)–(c) plus the
+    count term, applies $g/(g-1)$, and adds $I/n_k$ (model-based) and
+    $J_\psi \hat V_\psi J_\psi^\top$ (model-based; $J_\psi$ by
+    `numDeriv::jacobian` at fixed $\hat\beta$, $\hat V_\psi$ = 2 × the
+    pseudo-inverse of the numerical deviance Hessian).
+  - `.mixedCiCR2()` computes CR2 exactly as
+    `clubSandwich::vcovCR(type = "CR2")` (agreement to $10^{-11}$) but works
+    in the invariant subspace spanned by $Z_s\Lambda$ and
+    $V_s^{-1/2}X_s$ instead of forming $n_s \times n_s$ matrix roots. On
+    the full `egsingle` data it takes 0.2 s; clubSandwich takes over 15 min
+    per fit at $g = 100$, $m = 200$. `resi()`/`resi_pe()` use it
+    automatically for unweighted `lmerMod` fits with `vcovfunc =
+    clubSandwich::vcovCR`, `type = "CR2"` and a cluster, falling back to
+    clubSandwich otherwise.
+- `resi.lmerMod(..., ci.method = c("normal", "qf", "cf", "none"),
+  ci.design = TRUE)` adds `2.5%`/`97.5%` columns after `RESI` in the
+  coefficient and ANOVA tables. `vcovfunc = stats::vcov` selects the
+  model-based version; any other `vcovfunc` (default `vcovCR`, CR3 unless
+  `vcov.args$type` is set) selects the robust version. `resi.lme` still
+  returns point estimates only.
+- Unit tests (`tests/testthat/test-resi-mixed-ci.R`): CR2 vs clubSandwich;
+  GLS pieces vs lme4; the design-term linearization (with the count term)
+  vs resampling of school profiles; interval columns for each method.
+- Coverage simulation: `tests/run_mixed_ci_coverage.R` (AIgams) runs
+  `hybridPlasmodeSim(..., rep_fun = <CI recorder>)` on
+  $g \in \{15, 100\}$ × $m \in \{25, 200\}$, 1000 replicates, both
+  covariances × {normal, QF, CF}, scoring coverage of $S_m$ and
+  $S_{\text{Lyu}}$. Results: `calibration_report.Rmd`, "Confidence interval
+  coverage".
+
+## Questions for review
+
+The implementation provisionally uses the first option in each question.
+
+1. **Design term (b).** Include it (population of schools; needed to cover
+   $S_m$/$S_{\text{Lyu}}$ in the plasmode) or provide conditional-on-design
+   intervals? Default proposal: include, with an option to drop.
+2. **Model-based $\psi$ term** via numerical (RE)ML Hessian: acceptable?
+3. **Robust version:** drop the $\psi$ term by the stationarity argument, and
+   use unadjusted $\hat U_s$ for term (c) while $\hat\Sigma_{\beta,k}$ uses
+   CR2: acceptable?
+4. **Quantiles:** keep standard normal / $\chi^2$ references as in the
+   manuscript, or offer $t_{g-1}$ (or a Satterthwaite df) for small $g$?
+5. **`lme` (nlme) objects:** start with `lmerMod` only (and keep the warning
+   for `lme`), or require both now?

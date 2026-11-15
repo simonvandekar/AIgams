@@ -1,0 +1,131 @@
+ℹ Loading RESI
+Registered S3 method overwritten by 'clubSandwich':
+  method    from    
+  bread.mlm sandwich
+Registered S3 method overwritten by 'lme4':
+  method           from
+  na.action.merMod car 
+Finished cell 1/4: n_schools = 15, n_per_site = 25 (1000 successful fits)
+Finished cell 2/4: n_schools = 100, n_per_site = 25 (1000 successful fits)
+Finished cell 3/4: n_schools = 15, n_per_site = 200 (1000 successful fits)
+Finished cell 4/4: n_schools = 100, n_per_site = 200 (1000 successful fits)
+
+=== Coverage of S_m (fixed-m target), nominal 0.95 ===
+, , interaction(n_schools, n_per_site) = 15.25
+
+             interaction(covariance, method)
+term          CR2.cf model.cf CR2.normal model.normal CR2.qf model.qf
+  (Intercept)  0.911    0.961      0.902        0.955  0.902    0.955
+  black1       0.911    0.939      0.914        0.945  0.914    0.945
+  femaleMale   0.921    0.940      0.937        0.948  0.937    0.948
+  hispanic1    0.912    0.947      0.911        0.948  0.911    0.948
+  lowinc_10    0.868    0.932      0.873        0.934  0.873    0.934
+  size_100     0.902    0.959      0.899        0.957  0.899    0.957
+  year         0.832    0.941      0.836        0.943  0.836    0.943
+
+, , interaction(n_schools, n_per_site) = 100.25
+
+             interaction(covariance, method)
+term          CR2.cf model.cf CR2.normal model.normal CR2.qf model.qf
+  (Intercept)  0.943    0.954      0.944        0.952  0.944    0.952
+  black1       0.928    0.932      0.929        0.934  0.929    0.934
+  femaleMale   0.950    0.957      0.957        0.957  0.957    0.957
+  hispanic1    0.932    0.947      0.930        0.946  0.930    0.946
+  lowinc_10    0.949    0.956      0.946        0.953  0.946    0.953
+  size_100     0.939    0.954      0.938        0.946  0.938    0.946
+  year         0.936    0.949      0.936        0.947  0.936    0.947
+
+, , interaction(n_schools, n_per_site) = 15.200
+
+             interaction(covariance, method)
+term          CR2.cf model.cf CR2.normal model.normal CR2.qf model.qf
+  (Intercept)  0.901    0.962      0.891        0.956  0.891    0.956
+  black1       0.895    0.903      0.895        0.918  0.895    0.918
+  femaleMale   0.919    0.942      0.937        0.947  0.937    0.947
+  hispanic1    0.888    0.919      0.892        0.931  0.892    0.931
+  lowinc_10    0.875    0.925      0.876        0.929  0.876    0.929
+  size_100     0.894    0.960      0.886        0.953  0.886    0.953
+  year         0.823    0.931      0.823        0.931  0.823    0.931
+
+, , interaction(n_schools, n_per_site) = 100.200
+
+             interaction(covariance, method)
+term          CR2.cf model.cf CR2.normal model.normal CR2.qf model.qf
+  (Intercept)  0.943    0.961      0.940        0.958  0.940    0.958
+  black1       0.931    0.932      0.928        0.939  0.928    0.939
+  femaleMale   0.940    0.942      0.945        0.943  0.945    0.943
+  hispanic1    0.929    0.936      0.928        0.935  0.928    0.935
+  lowinc_10    0.933    0.949      0.927        0.951  0.927    0.951
+  size_100     0.944    0.959      0.946        0.955  0.946    0.955
+  year         0.927    0.947      0.926        0.947  0.926    0.947
+
+
+=== Coverage of S_Lyu, nominal 0.95 ===
+, , interaction(n_schools, n_per_site) = 15.25
+
+             interaction(covariance, method)
+term          CR2.cf model.cf CR2.normal model.normal CR2.qf model.qf
+  (Intercept)  0.901    0.944      0.891        0.938  0.891    0.938
+  black1       0.920    0.951      0.923        0.952  0.923    0.952
+  femaleMale   0.921    0.940      0.937        0.948  0.937    0.948
+  hispanic1    0.915    0.953      0.910        0.947  0.910    0.947
+  lowinc_10    0.746    0.821      0.755        0.831  0.755    0.831
+  size_100     0.905    0.958      0.893        0.956  0.893    0.956
+  year         0.833    0.939      0.835        0.944  0.835    0.944
+
+, , interaction(n_schools, n_per_site) = 100.25
+
+             interaction(covariance, method)
+term          CR2.cf model.cf CR2.normal model.normal CR2.qf model.qf
+  (Intercept)  0.916    0.919      0.914        0.921  0.914    0.921
+  black1       0.898    0.917      0.902        0.912  0.902    0.912
+  femaleMale   0.951    0.957      0.957        0.957  0.957    0.957
+  hispanic1    0.935    0.947      0.936        0.942  0.936    0.942
+  lowinc_10    0.634    0.590      0.632        0.608  0.632    0.608
+  size_100     0.931    0.948      0.933        0.941  0.933    0.941
+  year         0.936    0.943      0.937        0.943  0.937    0.943
+
+, , interaction(n_schools, n_per_site) = 15.200
+
+             interaction(covariance, method)
+term          CR2.cf model.cf CR2.normal model.normal CR2.qf model.qf
+  (Intercept)  0.890    0.958      0.885        0.955  0.885    0.955
+  black1       0.901    0.913      0.902        0.924  0.902    0.924
+  femaleMale   0.919    0.942      0.937        0.947  0.937    0.947
+  hispanic1    0.891    0.919      0.893        0.935  0.893    0.935
+  lowinc_10    0.863    0.914      0.862        0.913  0.862    0.913
+  size_100     0.894    0.959      0.889        0.954  0.889    0.954
+  year         0.824    0.931      0.823        0.929  0.823    0.929
+
+, , interaction(n_schools, n_per_site) = 100.200
+
+             interaction(covariance, method)
+term          CR2.cf model.cf CR2.normal model.normal CR2.qf model.qf
+  (Intercept)  0.936    0.954      0.939        0.953  0.939    0.953
+  black1       0.925    0.946      0.923        0.941  0.923    0.941
+  femaleMale   0.940    0.942      0.945        0.944  0.945    0.944
+  hispanic1    0.930    0.934      0.928        0.939  0.928    0.939
+  lowinc_10    0.919    0.937      0.918        0.938  0.918    0.938
+  size_100     0.945    0.961      0.944        0.954  0.944    0.954
+  year         0.927    0.948      0.926        0.945  0.926    0.945
+
+
+=== Mean estimated SE / MC SD of RESI ===
+             interaction(covariance, n_schools, n_per_site)
+term          CR2.15.25 model.15.25 CR2.100.25 model.100.25 CR2.15.200
+  (Intercept)     0.787       0.975      0.972        1.020      0.759
+  black1          0.798       1.008      0.917        0.948      0.756
+  femaleMale      0.924       0.992      0.981        0.996      0.913
+  hispanic1       0.784       0.989      0.944        0.991      0.741
+  lowinc_10       0.704       0.914      0.956        0.999      0.739
+  size_100        0.740       0.939      0.930        0.975      0.742
+  year            0.691       0.967      0.947        1.010      0.669
+             interaction(covariance, n_schools, n_per_site)
+term          model.15.200 CR2.100.200 model.100.200
+  (Intercept)        0.941       0.950         1.009
+  black1             0.950       0.914         0.991
+  femaleMale         1.008       0.964         0.974
+  hispanic1          1.004       0.924         0.984
+  lowinc_10          0.863       0.954         0.994
+  size_100           0.945       0.958         1.007
+  year               0.914       0.927         0.991
