@@ -1431,3 +1431,50 @@ once Goal 2/3/4's asymptotic variance derivations exist.
   by lm/glm), found because model-based QF coverage for `year` was 0.26.
 - Coverage (`tests/run_mixed_ci_coverage.R`, 1000 reps): model-based
   ~0.95 for S_m; CR2 0.82-0.94 at g = 15 and 0.93-0.95 at g = 100.
+
+---
+
+## 2026-11-16: lme intervals and out-of-sample validation on mlmRev::star
+
+- Simon asked for lme CIs, a second-dataset simulation and a push to a
+  branch. He was unavailable for questions, so the defaults were:
+  `mlmRev::star`, a full egsingle coverage rerun with lmer and lme in every
+  replicate, and branch `mixed-resi-ci` in both repos (no PR).
+- QF/CR2 follow-ups (RESI `7ef1493`): the fast CR2 matched clubSandwich on
+  sleepstudy, Orthodont and egsingle variants. It failed on singular fits
+  (theta = 0); fixed, with tests.
+- lme (RESI `87aa33e`): `.mixedCiBaseLme()` builds X, y, Z and Lambda from
+  the lme fit. The reStruct order is innermost first, so levels are matched
+  by name. It reproduces lme's beta, vcov and logLik (1e-12); its intervals
+  agree with lmer's (1e-6) and its CR2 with clubSandwich (1e-13).
+  `resi.lme`/`resi.lmerMod` now share `.resiMixedWithCi()`.
+- RESI `9d76b5f`:
+  - the 1-df QF interval uses the exact normal identity (`pchisq`
+    returned 0 for a tail of 2.9e-8);
+  - `hybridPlasmodeSim()` skips rank-deficient replicates.
+- The coverage code was moved into the dataset-agnostic
+  `tests/mixed_ci_coverage_lib.R`.
+- STAR: the first smoke test failed because rare factor levels (urban
+  schools, `eth` Other) vanished from resampled designs. Fixed by merging
+  categories and skipping rank-deficient replicates.
+- STAR results (`resiLongCalibrationSim/star/star_validation_report.Rmd`):
+  - Calibration matches egsingle: model SE / MC SD 0.86-1.05; variance
+    components within +/-3%; within-school RESI on the Lyu limit; the
+    between-school finite-m gap follows the design-averaged SE and S_m.
+  - 2-3% of replicates at g = 15 are dropped as rank-deficient.
+  - Model-based coverage of S_m is 0.92-0.97 for every term except the
+    intercept at g = 15 (0.77-0.79). The intercept RESI is about 8-10
+    (egsingle about 0.2): skewed, 1/tau_hat behaviour with 15 schools,
+    SE / SD 0.80. It covers at 0.94-0.95 at g = 100.
+  - The normal ANOVA interval undercovers small within-school terms; QF/CF
+    do not (as in egsingle).
+  - CR2 coverage is 0.86-0.94 at g = 15 and 0.92-0.96 at g = 100.
+  - Remedy candidates (t_{g-1} or a skewness-aware interval) are left for
+    Simon (review question 4).
+- egsingle coverage rerun with lmer + lme:
+  - The lmer rows reproduce the previous run exactly.
+  - nlme's `nlminb` failed to converge in 0/69/80/191 of 1000 replicates
+    per cell (lmer: none).
+  - Where both fit, lme and lmer agree to <= 4e-4 (model-based endpoints
+    at g = 15, m = 25: up to 0.23, probably near-singular fits), and
+    coverage differs by <= 0.012.

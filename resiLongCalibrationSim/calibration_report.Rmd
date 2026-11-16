@@ -508,7 +508,8 @@ equals normal there). Coverage is scored against the fixed-$m$ target $S_m$
 band is $0.95 \pm 1.96$ Monte Carlo SE.
 
 ```{r ci-coverage, fig.width = 11, fig.height = 9}
-ci_cov <- readRDS("mixed_ci_coverage.rds")
+ci_cov_all <- readRDS("mixed_ci_coverage.rds")
+ci_cov <- ci_cov_all[ci_cov_all$engine == "lmer", ]
 cells <- c("g15m25", "g15m200", "g100m25", "g100m200")
 ci_cov$cell <- factor(paste0("g", ci_cov$n_schools, "m", ci_cov$n_per_site), cells)
 cov_panel <- function(d, target, main, cols) {
@@ -558,6 +559,53 @@ kable(reshape(se_tab[, c("n_schools", "n_per_site", "term", "covariance", "ratio
               direction = "wide"),
       digits = 3, row.names = FALSE,
       caption = "Mean estimated SD of the coefficient RESI / Monte Carlo SD")
+```
+
+### `nlme::lme` fits
+
+Each replicate is also refitted with `nlme::lme(fixed, random = ~ 1 | schoolid/childid, method = "REML")`
+(the replicate lmer fits are also REML)
+and passed through `resi()`'s lme path, which maps the fit to the same
+$V = \sigma^2(I + Z\Lambda\Lambda^\top Z^\top)$ representation as lmer (see
+`notes/resi_mixed_ci.qmd`). The two engines optimise the same likelihood
+with different optimisers, so the intervals should agree up to the
+optimiser tolerance, and so should the coverage.
+
+Results:
+
+- nlme's default optimiser (`nlminb`) failed to converge in some
+  replicates: 0, 69, 80 and 191 of 1000 in the four cells (g = 15, m = 25;
+  100, 25; 15, 200; 100, 200). lmer converged in all 1000. These are
+  fitting failures in `nlme::lme`, not in the RESI code, but the lme
+  coverage below is computed on the remaining replicates.
+- Where both engines fit, estimates agree to $3 \times 10^{-4}$ and
+  interval endpoints to $5 \times 10^{-5}$–$4 \times 10^{-4}$, except the
+  model-based intervals at g = 15, m = 25. There the largest endpoint
+  difference is about 0.23, which is consistent with near-singular fits
+  ($\hat\tau^2_{\text{school}} \approx 0$): lmer reaches the boundary, but
+  lme's log-scale parameterisation cannot, so the numerical Hessian of the
+  $\psi$ term differs. The effect on coverage there is at most 0.001.
+- Coverage differs from lmer by at most 0.012 in every cell.
+- The lmer rows reproduce the previous lmer-only run exactly (same seed).
+
+```{r ci-lme}
+agree <- readRDS("mixed_ci_engine_agreement.rds")
+kable(agree, digits = 8, row.names = FALSE,
+      caption = "Maximum |lme - lmer| difference over replicates and terms, per cell")
+lme_cmp <- merge(
+  ci_cov_all[ci_cov_all$engine == "lmer", c("n_schools", "n_per_site", "table", "term", "covariance",
+                                            "method", "coverage_S_m", "coverage_S_Lyu")],
+  ci_cov_all[ci_cov_all$engine == "lme", c("n_schools", "n_per_site", "table", "term", "covariance",
+                                           "method", "coverage_S_m", "coverage_S_Lyu", "n_rep")],
+  by = c("n_schools", "n_per_site", "table", "term", "covariance", "method"),
+  suffixes = c(".lmer", ".lme"))
+kable(data.frame(
+  quantity = c("rows compared", "lme replicates per row (min)",
+               "max |coverage S_m lme - lmer|", "max |coverage S_Lyu lme - lmer|"),
+  value = c(nrow(lme_cmp), min(lme_cmp$n_rep),
+            max(abs(lme_cmp$coverage_S_m.lme - lme_cmp$coverage_S_m.lmer)),
+            max(abs(lme_cmp$coverage_S_Lyu.lme - lme_cmp$coverage_S_Lyu.lmer)))),
+  digits = 4, caption = "Coverage of lme intervals relative to lmer intervals")
 ```
 
 ## Interpretation

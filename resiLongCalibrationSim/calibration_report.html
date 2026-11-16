@@ -10,7 +10,7 @@
 
 
 
-<meta name="date" content="2026-11-15" />
+<meta name="date" content="2026-11-16" />
 
 <title>Longitudinal Mixed-Model Calibration Simulation (Goal 5a)</title>
 
@@ -1498,7 +1498,7 @@ div.tocify {
 
 <h1 class="title toc-ignore">Longitudinal Mixed-Model Calibration Simulation (Goal 5a)</h1>
 <h3 class="subtitle"><code>mlmRev::egsingle</code> two-stage hierarchical plasmode resampling</h3>
-<h4 class="date">2026-11-15</h4>
+<h4 class="date">2026-11-16</h4>
 
 </div>
 
@@ -7697,6 +7697,301 @@ Joint hybrid plasmode calibration across n_schools and n_per_site. Left column: 
 </tr>
 </tbody>
 </table>
+<div id="nlmelme-fits" class="section level3" number="4.4.1">
+<h3 number="4.4.1"><span class="header-section-number">4.4.1</span> <code>nlme::lme</code> fits</h3>
+<p>Each replicate is also refitted with <code>nlme::lme(fixed, random = ~ 1 | schoolid/childid, method = &quot;REML&quot;)</code> (the replicate lmer fits are also REML) and passed through <code>resi()</code>’s lme path, which maps the fit to the same <span class="math inline">\(V = \sigma^2(I + Z\Lambda\Lambda^\top Z^\top)\)</span> representation as lmer (see <code>notes/resi_mixed_ci.qmd</code>). The two engines optimise the same likelihood with different optimisers, so the intervals should agree up to the optimiser tolerance, and so should the coverage.</p>
+<p>Results:</p>
+<ul>
+<li>nlme’s default optimiser (<code>nlminb</code>) failed to converge in some replicates: 0, 69, 80 and 191 of 1000 in the four cells (g = 15, m = 25; 100, 25; 15, 200; 100, 200). lmer converged in all 1000. These are fitting failures in <code>nlme::lme</code>, not in the RESI code, but the lme coverage below is computed on the remaining replicates.</li>
+<li>Where both engines fit, estimates agree to <span class="math inline">\(3 \times 10^{-4}\)</span> and interval endpoints to <span class="math inline">\(5 \times 10^{-5}\)</span>–<span class="math inline">\(4 \times 10^{-4}\)</span>, except the model-based intervals at g = 15, m = 25. There the largest endpoint difference is about 0.23, which is consistent with near-singular fits (<span class="math inline">\(\hat\tau^2_{\text{school}} \approx 0\)</span>): lmer reaches the boundary, but lme’s log-scale parameterisation cannot, so the numerical Hessian of the <span class="math inline">\(\psi\)</span> term differs. The effect on coverage there is at most 0.001.</li>
+<li>Coverage differs from lmer by at most 0.012 in every cell.</li>
+<li>The lmer rows reproduce the previous lmer-only run exactly (same seed).</li>
+</ul>
+<table>
+<caption>Maximum |lme - lmer| difference over replicates and terms, per cell</caption>
+<thead>
+<tr class="header">
+<th align="right">n_schools</th>
+<th align="right">n_per_site</th>
+<th align="right">n_rep</th>
+<th align="left">covariance</th>
+<th align="left">method</th>
+<th align="right">d_est</th>
+<th align="right">d_lower</th>
+<th align="right">d_upper</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">15</td>
+<td align="right">25</td>
+<td align="right">1000</td>
+<td align="left">CR2</td>
+<td align="left">cf</td>
+<td align="right">0.00019258</td>
+<td align="right">0.00037670</td>
+<td align="right">0.00044306</td>
+</tr>
+<tr class="even">
+<td align="right">15</td>
+<td align="right">25</td>
+<td align="right">1000</td>
+<td align="left">model</td>
+<td align="left">cf</td>
+<td align="right">0.00033680</td>
+<td align="right">0.23140359</td>
+<td align="right">0.13441970</td>
+</tr>
+<tr class="odd">
+<td align="right">15</td>
+<td align="right">25</td>
+<td align="right">1000</td>
+<td align="left">CR2</td>
+<td align="left">normal</td>
+<td align="right">0.00019258</td>
+<td align="right">0.00044116</td>
+<td align="right">0.06929596</td>
+</tr>
+<tr class="even">
+<td align="right">15</td>
+<td align="right">25</td>
+<td align="right">1000</td>
+<td align="left">model</td>
+<td align="left">normal</td>
+<td align="right">0.00033680</td>
+<td align="right">0.13429511</td>
+<td align="right">0.13429141</td>
+</tr>
+<tr class="odd">
+<td align="right">15</td>
+<td align="right">25</td>
+<td align="right">1000</td>
+<td align="left">CR2</td>
+<td align="left">qf</td>
+<td align="right">0.00019258</td>
+<td align="right">0.00044116</td>
+<td align="right">0.00044116</td>
+</tr>
+<tr class="even">
+<td align="right">15</td>
+<td align="right">25</td>
+<td align="right">1000</td>
+<td align="left">model</td>
+<td align="left">qf</td>
+<td align="right">0.00033680</td>
+<td align="right">0.13445040</td>
+<td align="right">0.13429141</td>
+</tr>
+<tr class="odd">
+<td align="right">100</td>
+<td align="right">25</td>
+<td align="right">931</td>
+<td align="left">CR2</td>
+<td align="left">cf</td>
+<td align="right">0.00000692</td>
+<td align="right">0.00000884</td>
+<td align="right">0.00000891</td>
+</tr>
+<tr class="even">
+<td align="right">100</td>
+<td align="right">25</td>
+<td align="right">931</td>
+<td align="left">model</td>
+<td align="left">cf</td>
+<td align="right">0.00002246</td>
+<td align="right">0.00002257</td>
+<td align="right">0.00002435</td>
+</tr>
+<tr class="odd">
+<td align="right">100</td>
+<td align="right">25</td>
+<td align="right">931</td>
+<td align="left">CR2</td>
+<td align="left">normal</td>
+<td align="right">0.00000692</td>
+<td align="right">0.00000891</td>
+<td align="right">0.00000900</td>
+</tr>
+<tr class="even">
+<td align="right">100</td>
+<td align="right">25</td>
+<td align="right">931</td>
+<td align="left">model</td>
+<td align="left">normal</td>
+<td align="right">0.00002246</td>
+<td align="right">0.00002436</td>
+<td align="right">0.00002453</td>
+</tr>
+<tr class="odd">
+<td align="right">100</td>
+<td align="right">25</td>
+<td align="right">931</td>
+<td align="left">CR2</td>
+<td align="left">qf</td>
+<td align="right">0.00000692</td>
+<td align="right">0.00000891</td>
+<td align="right">0.00003898</td>
+</tr>
+<tr class="even">
+<td align="right">100</td>
+<td align="right">25</td>
+<td align="right">931</td>
+<td align="left">model</td>
+<td align="left">qf</td>
+<td align="right">0.00002246</td>
+<td align="right">0.00002436</td>
+<td align="right">0.00002436</td>
+</tr>
+<tr class="odd">
+<td align="right">15</td>
+<td align="right">200</td>
+<td align="right">920</td>
+<td align="left">CR2</td>
+<td align="left">cf</td>
+<td align="right">0.00012180</td>
+<td align="right">0.00016909</td>
+<td align="right">0.00016995</td>
+</tr>
+<tr class="even">
+<td align="right">15</td>
+<td align="right">200</td>
+<td align="right">920</td>
+<td align="left">model</td>
+<td align="left">cf</td>
+<td align="right">0.00020028</td>
+<td align="right">0.00021098</td>
+<td align="right">0.00020865</td>
+</tr>
+<tr class="odd">
+<td align="right">15</td>
+<td align="right">200</td>
+<td align="right">920</td>
+<td align="left">CR2</td>
+<td align="left">normal</td>
+<td align="right">0.00012180</td>
+<td align="right">0.00017095</td>
+<td align="right">0.00016380</td>
+</tr>
+<tr class="even">
+<td align="right">15</td>
+<td align="right">200</td>
+<td align="right">920</td>
+<td align="left">model</td>
+<td align="left">normal</td>
+<td align="right">0.00020028</td>
+<td align="right">0.00021369</td>
+<td align="right">0.00021047</td>
+</tr>
+<tr class="odd">
+<td align="right">15</td>
+<td align="right">200</td>
+<td align="right">920</td>
+<td align="left">CR2</td>
+<td align="left">qf</td>
+<td align="right">0.00012180</td>
+<td align="right">0.00017095</td>
+<td align="right">0.00017096</td>
+</tr>
+<tr class="even">
+<td align="right">15</td>
+<td align="right">200</td>
+<td align="right">920</td>
+<td align="left">model</td>
+<td align="left">qf</td>
+<td align="right">0.00020028</td>
+<td align="right">0.00021034</td>
+<td align="right">0.00021047</td>
+</tr>
+<tr class="odd">
+<td align="right">100</td>
+<td align="right">200</td>
+<td align="right">809</td>
+<td align="left">CR2</td>
+<td align="left">cf</td>
+<td align="right">0.00000276</td>
+<td align="right">0.00000298</td>
+<td align="right">0.00000284</td>
+</tr>
+<tr class="even">
+<td align="right">100</td>
+<td align="right">200</td>
+<td align="right">809</td>
+<td align="left">model</td>
+<td align="left">cf</td>
+<td align="right">0.00005188</td>
+<td align="right">0.00005133</td>
+<td align="right">0.00005166</td>
+</tr>
+<tr class="odd">
+<td align="right">100</td>
+<td align="right">200</td>
+<td align="right">809</td>
+<td align="left">CR2</td>
+<td align="left">normal</td>
+<td align="right">0.00000276</td>
+<td align="right">0.00000303</td>
+<td align="right">0.00000299</td>
+</tr>
+<tr class="even">
+<td align="right">100</td>
+<td align="right">200</td>
+<td align="right">809</td>
+<td align="left">model</td>
+<td align="left">normal</td>
+<td align="right">0.00005188</td>
+<td align="right">0.00005169</td>
+<td align="right">0.00005240</td>
+</tr>
+<tr class="odd">
+<td align="right">100</td>
+<td align="right">200</td>
+<td align="right">809</td>
+<td align="left">CR2</td>
+<td align="left">qf</td>
+<td align="right">0.00000276</td>
+<td align="right">0.00000299</td>
+<td align="right">0.00000299</td>
+</tr>
+<tr class="even">
+<td align="right">100</td>
+<td align="right">200</td>
+<td align="right">809</td>
+<td align="left">model</td>
+<td align="left">qf</td>
+<td align="right">0.00005188</td>
+<td align="right">0.00005169</td>
+<td align="right">0.00005169</td>
+</tr>
+</tbody>
+</table>
+<table>
+<caption>Coverage of lme intervals relative to lmer intervals</caption>
+<thead>
+<tr class="header">
+<th align="left">quantity</th>
+<th align="right">value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">rows compared</td>
+<td align="right">312.0000</td>
+</tr>
+<tr class="even">
+<td align="left">lme replicates per row (min)</td>
+<td align="right">809.0000</td>
+</tr>
+<tr class="odd">
+<td align="left">max |coverage S_m lme - lmer|</td>
+<td align="right">0.0116</td>
+</tr>
+<tr class="even">
+<td align="left">max |coverage S_Lyu lme - lmer|</td>
+<td align="right">0.0090</td>
+</tr>
+</tbody>
+</table>
+</div>
 </div>
 <div id="interpretation" class="section level2" number="4.5">
 <h2 number="4.5"><span class="header-section-number">4.5</span> Interpretation</h2>

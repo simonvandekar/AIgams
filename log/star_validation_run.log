@@ -1,0 +1,158 @@
+ℹ Loading RESI
+Registered S3 method overwritten by 'clubSandwich':
+  method    from    
+  bread.mlm sandwich
+Registered S3 method overwritten by 'lme4':
+  method           from
+  na.action.merMod car 
+Finished cell 1/12: n_schools = 15, n_per_site = 25 (968 successful fits)
+Finished cell 2/12: n_schools = 30, n_per_site = 25 (1000 successful fits)
+Finished cell 3/12: n_schools = 60, n_per_site = 25 (1000 successful fits)
+Finished cell 4/12: n_schools = 100, n_per_site = 25 (1000 successful fits)
+Finished cell 5/12: n_schools = 15, n_per_site = 100 (972 successful fits)
+Finished cell 6/12: n_schools = 30, n_per_site = 100 (998 successful fits)
+Finished cell 7/12: n_schools = 60, n_per_site = 100 (1000 successful fits)
+Finished cell 8/12: n_schools = 100, n_per_site = 100 (1000 successful fits)
+Finished cell 9/12: n_schools = 15, n_per_site = 200 (967 successful fits)
+Finished cell 10/12: n_schools = 30, n_per_site = 200 (998 successful fits)
+Finished cell 11/12: n_schools = 60, n_per_site = 200 (1000 successful fits)
+Finished cell 12/12: n_schools = 100, n_per_site = 200 (1000 successful fits)
+
+=== Fixed effects: mean model SE / MC SD ===
+, , n_per_site = 25
+
+                     n_schools
+param                    15    30    60   100
+  beta_(Intercept)    0.951 0.985 0.978 1.016
+  beta_black1         0.950 0.988 0.980 0.970
+  beta_cltypereg+A    0.982 0.995 0.972 1.055
+  beta_cltypesmall    1.007 1.002 1.005 1.009
+  beta_fl_10          0.948 1.025 0.957 1.001
+  beta_schtype3rural  0.980 0.978 1.010 0.986
+  beta_schtype3suburb 0.953 0.971 1.010 1.001
+  beta_sesF           0.967 0.965 1.015 1.020
+  beta_sxF            0.967 0.970 1.052 1.018
+  beta_yrs            1.009 1.032 0.971 0.982
+
+, , n_per_site = 100
+
+                     n_schools
+param                    15    30    60   100
+  beta_(Intercept)    0.880 0.957 1.038 0.998
+  beta_black1         1.016 0.967 0.956 0.986
+  beta_cltypereg+A    1.023 0.989 0.979 1.017
+  beta_cltypesmall    0.982 1.015 0.966 0.984
+  beta_fl_10          0.908 0.964 1.047 0.997
+  beta_schtype3rural  0.913 0.964 1.010 0.969
+  beta_schtype3suburb 0.862 0.965 1.017 0.969
+  beta_sesF           1.003 1.041 1.002 1.016
+  beta_sxF            0.952 1.003 0.990 1.002
+  beta_yrs            1.007 1.042 0.993 0.973
+
+, , n_per_site = 200
+
+                     n_schools
+param                    15    30    60   100
+  beta_(Intercept)    0.951 0.975 1.006 0.991
+  beta_black1         0.955 0.985 1.017 1.035
+  beta_cltypereg+A    0.991 0.980 1.048 0.993
+  beta_cltypesmall    1.015 1.023 0.999 0.972
+  beta_fl_10          0.947 0.977 0.980 0.994
+  beta_schtype3rural  0.985 0.995 1.004 0.989
+  beta_schtype3suburb 0.976 0.992 1.002 0.994
+  beta_sesF           1.008 0.969 0.997 0.992
+  beta_sxF            0.973 1.031 0.977 1.016
+  beta_yrs            0.988 1.029 0.982 1.020
+
+Finished cell 1/4: n_schools = 15, n_per_site = 25 (976 successful fits)
+Finished cell 2/4: n_schools = 100, n_per_site = 25 (1000 successful fits)
+Finished cell 3/4: n_schools = 15, n_per_site = 200 (966 successful fits)
+Finished cell 4/4: n_schools = 100, n_per_site = 200 (1000 successful fits)
+
+=== [ lmer ] Coverage of S_m (fixed-m target), nominal 0.95 ===
+, , interaction(n_schools, n_per_site) = 15.25
+
+                interaction(covariance, method)
+term             CR2.cf model.cf CR2.normal model.normal CR2.qf model.qf
+  (Intercept)     0.765    0.769      0.784        0.773  0.784    0.773
+  black1          0.871    0.923      0.880        0.928  0.880    0.928
+  cltypereg+A     0.924    0.945      0.938        0.946  0.938    0.946
+  cltypesmall     0.912    0.947      0.928        0.950  0.928    0.950
+  fl_10           0.902    0.965      0.884        0.960  0.884    0.960
+  schtype3rural   0.870    0.968      0.865        0.962  0.865    0.962
+  schtype3suburb  0.880    0.966      0.859        0.956  0.859    0.956
+  sesF            0.909    0.939      0.915        0.943  0.915    0.943
+  sxF             0.910    0.952      0.924        0.952  0.924    0.952
+  yrs             0.857    0.947      0.859        0.950  0.859    0.950
+
+, , interaction(n_schools, n_per_site) = 100.25
+
+                interaction(covariance, method)
+term             CR2.cf model.cf CR2.normal model.normal CR2.qf model.qf
+  (Intercept)     0.901    0.932      0.905        0.936  0.905    0.936
+  black1          0.931    0.944      0.930        0.946  0.930    0.946
+  cltypereg+A     0.936    0.940      0.942        0.941  0.942    0.941
+  cltypesmall     0.935    0.939      0.936        0.939  0.936    0.939
+  fl_10           0.947    0.967      0.949        0.966  0.949    0.966
+  schtype3rural   0.943    0.960      0.945        0.958  0.945    0.958
+  schtype3suburb  0.947    0.962      0.952        0.958  0.952    0.958
+  sesF            0.943    0.956      0.947        0.954  0.947    0.954
+  sxF             0.940    0.943      0.942        0.943  0.942    0.943
+  yrs             0.921    0.949      0.928        0.950  0.928    0.950
+
+, , interaction(n_schools, n_per_site) = 15.200
+
+                interaction(covariance, method)
+term             CR2.cf model.cf CR2.normal model.normal CR2.qf model.qf
+  (Intercept)     0.778    0.780      0.800        0.787  0.800    0.787
+  black1          0.861    0.891      0.863        0.916  0.863    0.916
+  cltypereg+A     0.890    0.935      0.912        0.933  0.912    0.933
+  cltypesmall     0.877    0.958      0.885        0.961  0.885    0.961
+  fl_10           0.913    0.957      0.902        0.953  0.902    0.953
+  schtype3rural   0.879    0.968      0.869        0.964  0.869    0.964
+  schtype3suburb  0.894    0.975      0.869        0.972  0.869    0.972
+  sesF            0.870    0.941      0.870        0.943  0.870    0.943
+  sxF             0.920    0.958      0.931        0.958  0.931    0.958
+  yrs             0.861    0.939      0.864        0.946  0.864    0.946
+
+, , interaction(n_schools, n_per_site) = 100.200
+
+                interaction(covariance, method)
+term             CR2.cf model.cf CR2.normal model.normal CR2.qf model.qf
+  (Intercept)     0.897    0.940      0.905        0.948  0.905    0.948
+  black1          0.919    0.936      0.917        0.939  0.917    0.939
+  cltypereg+A     0.950    0.957      0.956        0.958  0.956    0.958
+  cltypesmall     0.926    0.948      0.927        0.948  0.927    0.948
+  fl_10           0.946    0.956      0.949        0.955  0.949    0.955
+  schtype3rural   0.944    0.963      0.949        0.956  0.949    0.956
+  schtype3suburb  0.937    0.953      0.940        0.948  0.940    0.948
+  sesF            0.942    0.949      0.946        0.951  0.946    0.951
+  sxF             0.937    0.935      0.941        0.937  0.941    0.937
+  yrs             0.947    0.950      0.941        0.953  0.941    0.953
+
+
+=== [ lmer ] Mean estimated SE / MC SD of RESI ===
+                interaction(covariance, n_schools, n_per_site)
+term             CR2.15.25 model.15.25 CR2.100.25 model.100.25 CR2.15.200
+  (Intercept)        0.697       0.796      0.895        1.003      0.724
+  black1             0.729       0.951      0.920        0.992      0.716
+  cltypereg+A        0.884       0.969      0.946        0.956      0.868
+  cltypesmall        0.894       0.984      0.943        0.975      0.778
+  fl_10              0.707       0.963      0.957        0.999      0.708
+  schtype3rural      0.660       0.933      0.966        1.011      0.703
+  schtype3suburb     0.618       0.937      0.978        1.030      0.649
+  sesF               0.860       0.955      0.956        1.007      0.761
+  sxF                0.925       1.002      0.965        0.982      0.899
+  yrs                0.732       0.996      0.944        1.008      0.717
+                interaction(covariance, n_schools, n_per_site)
+term             model.15.200 CR2.100.200 model.100.200
+  (Intercept)           0.857       0.887         1.047
+  black1                0.934       0.906         0.985
+  cltypereg+A           0.974       1.020         1.029
+  cltypesmall           1.013       0.936         0.980
+  fl_10                 0.967       0.951         0.999
+  schtype3rural         0.973       0.960         1.010
+  schtype3suburb        0.961       0.951         1.020
+  sesF                  1.001       0.991         1.011
+  sxF                   1.005       0.956         0.961
+  yrs                   1.006       0.996         0.996

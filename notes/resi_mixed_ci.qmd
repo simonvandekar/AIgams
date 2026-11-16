@@ -275,24 +275,65 @@ Each interval is evaluated against both targets:
     $V_s^{-1/2}X_s$ instead of forming $n_s \times n_s$ matrix roots. On
     the full `egsingle` data it takes 0.2 s; clubSandwich takes over 15 min
     per fit at $g = 100$, $m = 200$. `resi()`/`resi_pe()` use it
-    automatically for unweighted `lmerMod` fits with `vcovfunc =
+    automatically for unweighted `lmerMod` fits and supported `lme` fits
+    with `vcovfunc =
     clubSandwich::vcovCR`, `type = "CR2"` and a cluster, falling back to
     clubSandwich otherwise.
 - `resi.lmerMod(..., ci.method = c("normal", "qf", "cf", "none"),
   ci.design = TRUE)` adds `2.5%`/`97.5%` columns after `RESI` in the
   coefficient and ANOVA tables. `vcovfunc = stats::vcov` selects the
   model-based version; any other `vcovfunc` (default `vcovCR`, CR3 unless
-  `vcov.args$type` is set) selects the robust version. `resi.lme` still
-  returns point estimates only.
-- Unit tests (`tests/testthat/test-resi-mixed-ci.R`): CR2 vs clubSandwich;
-  GLS pieces vs lme4; the design-term linearization (with the count term)
-  vs resampling of school profiles; interval columns for each method.
+  `vcov.args$type` is set) selects the robust version. `resi.lme` has the
+  same arguments (shared helper `.resiMixedWithCi()`); see the next section.
+- `.resi_ci_qf()` (1-df ANOVA terms) now always inverts the exact identity
+  $P(\chi^2_1(\lambda) \ge q) = \Phi(\sqrt\lambda - \sqrt q) +
+  \Phi(-\sqrt\lambda - \sqrt q)$. `pchisq` loses precision for large
+  arguments (it warns at $q \approx 300$, $\lambda \approx 100$ and returns
+  0 at $q = 9000$, $\lambda = 8000$, where the tail is $2.9 \times 10^{-8}$).
+  This also changes the 1-df QF intervals of `lm`/`glm` slightly, toward
+  the exact value.
+- Unit tests (`tests/testthat/test-resi-mixed-ci.R`): CR2 vs clubSandwich
+  (random intercept/slope, uncorrelated, ML, singular fits, external
+  cluster, lme); GLS pieces vs lme4; lme vs lmer intervals; the
+  design-term linearization (with the count term) vs resampling of school
+  profiles; interval columns for each method.
 - Coverage simulation: `tests/run_mixed_ci_coverage.R` (AIgams) runs
-  `hybridPlasmodeSim(..., rep_fun = <CI recorder>)` on
-  $g \in \{15, 100\}$ × $m \in \{25, 200\}$, 1000 replicates, both
-  covariances × {normal, QF, CF}, scoring coverage of $S_m$ and
+  `hybridPlasmodeSim(..., rep_fun = make_ci_rep(..., lme = TRUE))` (shared
+  code in `tests/mixed_ci_coverage_lib.R`) on
+  $g \in \{15, 100\}$ × $m \in \{25, 200\}$, 1000 replicates, lmer and lme
+  fits × both covariances × {normal, QF, CF}, scoring coverage of $S_m$ and
   $S_{\text{Lyu}}$. Results: `calibration_report.Rmd`, "Confidence interval
-  coverage".
+  coverage". The same framework is applied to `mlmRev::star` in
+  `tests/run_star_validation.R`, reported in
+  `resiLongCalibrationSim/star/star_validation_report.Rmd`.
+
+## `nlme::lme` fits
+
+`.mixedCiBaseLme()` maps an `lme` fit to the lme4 representation
+$V = \sigma^2(I + Z\Lambda\Lambda^\top Z^\top)$, so that all of the code
+above is reused unchanged:
+
+- $X$ from `model.matrix(terms(formula(fit)), getData(fit), contrasts = fit$contrasts)`,
+  $y$ from `getResponse()`.
+- For each grouping level $k$, $Z_k$ is the random-effects model matrix of
+  the `pdMat` crossed with the group indicators, and $\Lambda_k$ is the
+  lower Cholesky factor of the relative covariance `as.matrix(pd)`
+  ($= \Sigma_k / \sigma^2$). `reStruct` is stored innermost first while
+  `getGroups()` is outermost first, so levels are matched by name.
+- $\theta$ (the free elements of $\Lambda$) follows the `pdMat` class:
+  the lower triangle for `pdSymm`/`pdLogChol`, the diagonal for `pdDiag`,
+  and one shared value for `pdIdent`. The deviance, $J_\psi$ and the
+  numerical Hessian are then evaluated on $\theta$ exactly as for lmer.
+- Fits with a `varStruct` or `corStruct`, or other `pdMat` classes, are
+  not supported. `resi()` warns ("Confidence intervals not available for
+  this lme fit") and returns point estimates.
+
+Checks: the representation reproduces lme's $\hat\beta$, `vcov` and
+$-2\log L$ to about $10^{-12}$; lme and lmer intervals for the same model
+agree to about $10^{-6}$ (optimiser tolerance); the fast CR2 for lme
+matches `clubSandwich::vcovCR(type = "CR2")` to about $10^{-13}$. In the
+egsingle coverage simulation, lme and lmer are fitted to every replicate
+and give the same coverage (`calibration_report.Rmd`).
 
 ## Questions for review
 
@@ -307,5 +348,6 @@ The implementation provisionally uses the first option in each question.
    CR2: acceptable?
 4. **Quantiles:** keep standard normal / $\chi^2$ references as in the
    manuscript, or offer $t_{g-1}$ (or a Satterthwaite df) for small $g$?
-5. **`lme` (nlme) objects:** start with `lmerMod` only (and keep the warning
-   for `lme`), or require both now?
+5. **`lme` (nlme) objects:** resolved. Simon asked for lme intervals, and
+   they are implemented for fits without variance/correlation structures
+   (previous section).

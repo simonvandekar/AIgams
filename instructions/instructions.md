@@ -94,8 +94,9 @@ Covariates are rescaled by fixed divisors (not z-scores):
 
 ### Goal 2: Extend `resi_pe`/`resi_asymptotic` machinery to `lmer`/`lme`
 **Status:** Point estimator implemented and calibrated; asymptotic CIs
-implemented for `lmerMod` provisionally (derivation note
-`notes/resi_mixed_ci.qmd`, not yet reviewed by Simon); `lme` CIs not started.
+implemented for `lmerMod` and `lme` provisionally (derivation note
+`notes/resi_mixed_ci.qmd`, not yet reviewed by Simon); validated on egsingle
+and, out of sample, on `mlmRev::star` (Goal 5d).
 
 **Point estimator (`RESI/R/resi_pe_mixed.R`).** `resi_pe.lmerMod` and
 `resi_pe.lme` return one `RESI` per coefficient (`z2S`, with `unbiased`) and
@@ -130,7 +131,10 @@ terms have a finite-m gap (school-level precision is
 
 **CIs (`RESI/R/resi_mixed_ci.R`, provisional).** `resi.lmerMod(...,
 ci.method = c("normal", "qf", "cf", "none"), ci.design = TRUE)` adds
-`2.5%`/`97.5%` columns; `resi.lme()` still returns point estimates only.
+`2.5%`/`97.5%` columns; `resi.lme()` has the same arguments (shared helper
+`.resiMixedWithCi()`). lme fits are mapped to the lme4 representation by
+`.mixedCiBaseLme()` (pdSymm/pdLogChol/pdDiag/pdIdent; fits with
+varStruct/corStruct or other pdMat classes warn and return point estimates).
 Var(R_hat) is estimated from outermost-cluster (school) influence values:
 outcome noise through beta_hat, sampling of the per-school information I_s
 (random design, `ci.design`), the unit count n_k when it counts units below
@@ -138,8 +142,8 @@ the school, the meat U_s U_s' (robust only), and, for the model-based
 covariance, the variance-component (psi) uncertainty via a numerical (RE)ML
 Hessian. These feed the existing normal/QF/CF algorithms in
 `resi_asymptotic.R`. `vcovfunc = stats::vcov` gives the model-based version;
-`clubSandwich::vcovCR` the robust one. CR2 for unweighted `lmerMod` fits with
-a cluster uses the internal `.mixedCiCR2()` (identical to clubSandwich,
+`clubSandwich::vcovCR` the robust one. CR2 for unweighted `lmerMod` and
+supported `lme` fits with a cluster uses the internal `.mixedCiCR2()` (identical to clubSandwich,
 much faster). The four review questions at the end of the note were
 answered with the proposed defaults because Simon was unavailable; revisit.
 
@@ -237,7 +241,25 @@ for the mixed-model CIs.
 `n_per_site in {25,200}`, 1000 replicates, seed 2027, ~3 h on 24 cores) writes
 `resiLongCalibrationSim/mixed_ci_coverage.rds`; results are in the
 "Confidence interval coverage" section of the calibration report. The full
-grid has not been run.
+grid has not been run. Each replicate is fitted with both lmer and
+`nlme::lme` (column `engine`); `mixed_ci_engine_agreement.rds` holds the
+maximum lme-lmer difference per cell. Result: lme coverage is within 0.012 of lmer; nlme's
+optimiser fails to converge in up to 19% of replicates (g = 100, m = 200),
+which are excluded from the lme rows. The coverage code is dataset-agnostic
+(`tests/mixed_ci_coverage_lib.R`).
+
+**5d. Out-of-sample validation on `mlmRev::star`** (Tennessee STAR; chosen
+by Claude because Simon was unavailable): same framework, data preparation in
+`tests/star_data.R` (rare categories merged: `black` indicator, school type
+city/suburb/rural; student id made unique within school; `fl_10` =
+school free-lunch percentage / 10), model
+`math ~ yrs + sx + black + ses + cltype + schtype3 + fl_10 + (1 | sch/sid)`.
+`tests/run_star_validation.R [calibration|coverage]` runs the 4 x 3
+calibration grid (seed 2026) and the 2 x 2 coverage grid (seed 2027, lmer)
+and writes `resiLongCalibrationSim/star/*.rds`; report
+`resiLongCalibrationSim/star/star_validation_report.Rmd`. Replicates whose
+design loses a factor level (rank-deficient X) are counted as failed fits
+(`n_success`).
 
 <!--
 SNV: I commented this because we won't focus on bug fixes for this project.
@@ -276,3 +298,7 @@ Record settled decisions here to avoid relitigating them in future sessions.
 | Mixed-model CIs: model-based and robust CR2 (school-clustered) covariance; Normal/QF/CF; coverage of both the Lyu limit and S_m; reduced grid first; wire into `resi.lmerMod`/`resi.lme` | User decisions | 2026-11-15 |
 | Mixed CIs implemented with the note's proposed defaults (design term included, `ci.design = FALSE` to drop; numerical-Hessian psi term for model-based; robust drops psi and uses unadjusted U_s in the meat term; normal/chi-square quantiles; `lmerMod` only) | Simon unavailable when asked; awaiting review | 2026-11-15 |
 | Fixed a sign error in the large-noncentrality branch of `.resi_ci_qf` (`resi_asymptotic.R`; affects lm/glm QF CIs whenever n S^2 / Sigma_R or the observed statistic exceeds 1e4) | Found by the mixed CI coverage simulation (`year` ANOVA QF coverage 0.26) | 2026-11-15 |
+| `lme` CIs via mapping to the lme4 V = sigma^2(I + Z Lambda Lambda' Z') representation (`.mixedCiBaseLme()`); unsupported lme structures fall back to point estimates with a warning | User asked for lme intervals | 2026-11-16 |
+| `.resi_ci_qf` 1-df case always uses the exact identity P = Phi(sqrt(lambda) - sqrt(q)) + Phi(-sqrt(lambda) - sqrt(q)) instead of `pchisq` (which loses precision for large arguments) | Numerical accuracy; slightly changes lm/glm 1-df QF intervals | 2026-11-16 |
+| `hybridPlasmodeSim()` drops replicates whose refit has fewer fixed effects than the truth (a factor level lost in the resampled design) | Needed for `star` (rare levels); never triggered on egsingle | 2026-11-16 |
+| Out-of-sample dataset `mlmRev::star`; egsingle coverage rerun with lmer and lme in every replicate; work pushed to branch `mixed-resi-ci` in both repos, no PR | Simon unavailable when asked; defaults chosen by Claude | 2026-11-16 |
