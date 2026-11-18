@@ -167,7 +167,16 @@ a coefficients-style table (parametric terms) and an ANOVA-style table
   sandwich (does `sandwich::vcovHC` support `gam`/`bam` objects? needs checking)? Let's do the default Bayesian approach first.
 - Is `bam`'s fast/`discrete = TRUE` fitting path in scope, or only the
   standard `bam` fit? Let's start with default bam fit and revisit once we know that works.
-**Expected behavior / acceptance criteria:** [FILL IN]
+**Expected behavior / acceptance criteria:** (SNV, 2026-11-17)
+1. Run calibration simulations first, as for the mixed model: the
+   population (truth) RESI values must be defined and the MC expectations of
+   the point estimates must converge to them, with model SEs matching the MC
+   SD. These must look as good as the mixed-model results before CIs are developed.
+2. RESI point estimates for penalized smooth terms have not been developed or
+   evaluated, so consistency is not guaranteed. Compare several ways of
+   obtaining the point estimates; some F and chi-square statistics reported by
+   mgcv can be biased (e.g. non-uniform p-values under the null). Use the mgcv
+   documentation for guidance.
 **Files:**
 - Functions: `RESI/R/resi_pe.R`, `RESI/R/resi.R`, `RESI/R/resi_asymptotic.R`
 - Output: Similar functionality to other methods in the package. There shouldn't be a CS-RESI here -- even if gam is using lmer to fit, it is not truly a mixed model and L-RESI should just be called RESI if we use lme4/nlme machinery to get the effect sizes and CIs.
@@ -302,3 +311,9 @@ Record settled decisions here to avoid relitigating them in future sessions.
 | `.resi_ci_qf` 1-df case always uses the exact identity P = Phi(sqrt(lambda) - sqrt(q)) + Phi(-sqrt(lambda) - sqrt(q)) instead of `pchisq` (which loses precision for large arguments) | Numerical accuracy; slightly changes lm/glm 1-df QF intervals | 2026-11-16 |
 | `hybridPlasmodeSim()` drops replicates whose refit has fewer fixed effects than the truth (a factor level lost in the resampled design) | Needed for `star` (rare levels); never triggered on egsingle | 2026-11-16 |
 | Out-of-sample dataset `mlmRev::star`; egsingle coverage rerun with lmer and lme in every replicate; work pushed to branch `mixed-resi-ci` in both repos, no PR | Simon unavailable when asked; defaults chosen by Claude | 2026-11-16 |
+| Review of mixed CI note: design term included (approved); numerical-Hessian psi (approved); robust CR2 version tentatively approved pending Simon's closer read; reference distribution: model-based stays normal/chi-square, t(g-1)/F(., g-1) for CR2 to be evaluated and adopted automatically (no new option) if it helps | Simon's review | 2026-11-17 |
+| Goal 3 (gam/bam) acceptance: calibration simulations of point estimates (MC mean vs truth, SE vs MC SD) must look as good as the mixed-model results before any CI work; compare several point-estimate constructions because mgcv smooth-term F/chi-square statistics can be biased | Simon | 2026-11-17 |
+| Model B (egsingle random slope): `(1 | schoolid) + (year | childid:schoolid)`; simulation code (`hybridPlasmodeSim`, `lyuLimitResi`) generalised to child-level random effects with general Z_j; school level still intercept-only | Simon chose the child-level slope specification | 2026-11-17 |
+| Mixed RESI sample size `n`: a term with a random slope at a level coarser than its own n level uses the number of units at that slope level (between-cluster terms still use g; user-supplied `n` unchanged) | Simon approved the scaling rule | 2026-11-17 |
+| CR2 (robust) mixed CIs use a t(g-1) / F(., g-1) reference automatically (`ref.df = NULL` default; model-based stays normal). QF/CF use the noise-only form (t noise, unscaled signal), integrated over W with 20-node generalized Gauss-Laguerre; g=15 coverage of S_m rose from about 0.89-0.91 to 0.92-0.94 on egsingle and STAR | Simon: "Do option 1 if it does not lose significant precision" | 2026-11-17 |
+| Goal 3 (gam/bam) design: target T1 = basis-free S_j^2 = E[(f_j - projection onto other terms)^2]/sigma^2 (fixed-basis T2 reported as diagnostic); df correction = Ref.df (edf1); covariance = mgcv default Vp only (Ve, Vc, sandwich not considered; revisit if calibration fails); zero-null-space terms (bs="re", select=TRUE, shrinkage) excluded from v1 (warn, NA); Gaussian family first | Simon (notes/resi_gam.qmd questions) | 2026-11-17 |

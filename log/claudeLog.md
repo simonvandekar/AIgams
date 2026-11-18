@@ -1478,3 +1478,28 @@ once Goal 2/3/4's asymptotic variance derivations exist.
   - Where both fit, lme and lmer agree to <= 4e-4 (model-based endpoints
     at g = 15, m = 25: up to 0.23, probably near-singular fits), and
     coverage differs by <= 0.012.
+
+## 2026-11-17 — Model B, CR2 t(g-1) reference
+
+- Shared model definitions in `tests/egsingle_models.R` (Model A:
+  random intercepts; Model B: `(1 | schoolid) + (year | childid:schoolid)`).
+  The drivers take `A|B`.
+- Model B calibration on the full 4x3 grid (seed 2026): SE / MC SD
+  0.92-1.05, variance-component bias < 1%, `year` RESI matches the Lyu
+  limit. Added to `calibration_report.Rmd`, which was refactored into
+  `load_calibration()` / `plot_calibration()`.
+- CR2 reference evaluation (`tests/run_cr2_reference_eval.R`, g = 15,
+  egsingle + STAR):
+  - Bug 1: adaptive `integrate()` over W failed in about 25% of replicates.
+    Replaced with a fixed rule (now 20-node generalized Gauss-Laguerre;
+    error <= 3e-4 against the exact shifted t).
+  - Bug 2: the first QF/CF form (multiplicative noncentral F,
+    T^2 = Q d / W) double counted variance-estimation uncertainty
+    (`year` ANOVA 0.97 vs signed 0.86). Switched to the noise-only t form;
+    signed and unsigned 1-df intervals now agree.
+  - Mean S_m coverage (non-intercept): coefficients 0.89 -> 0.92;
+    ANOVA 0.90-0.91 -> 0.93/0.94. Adopted automatically for CR2
+    (`ref.df = NULL` -> g - 1 if robust). Model-based is unchanged.
+- Process mishap: a stale evaluation kept running because the `ps`
+  pattern missed `R --file=` workers; it was killed by PID and rerun.
+- RESI test suite: 229 pass.

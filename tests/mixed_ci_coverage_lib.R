@@ -1,3 +1,7 @@
+# [AI-generated: GitHub Copilot, 2026-11-15]
+# [Prompt summary: dataset-agnostic coverage driver for the mixed-model RESI
+#  CIs in the hybrid plasmode.]
+
 # Shared driver for the coverage of the mixed-model RESI confidence intervals
 # (RESI:::.resi_ci_mixed) in the hybrid plasmode (hybridPlasmodeSim). Nothing
 # here is specific to a dataset: terms, their levels and the targets come from
@@ -7,24 +11,27 @@
 ci_methods <- c("normal", "qf", "cf")
 
 # Intervals for one fitted replicate with the model-based and CR2 covariances.
-ci_table <- function(fit, school, engine) {
+# `cr2_t = TRUE` adds CR2 intervals with t(g - 1) / F(., g - 1) references
+# (covariance "CR2-t"), g the number of clusters.
+ci_table <- function(fit, school, engine, cr2_t = FALSE) {
   pe <- resi_pe(fit, anova = TRUE, vcovfunc = stats::vcov, level = 2)
   n_coef <- setNames(pe$coefficients$n, rownames(pe$coefficients))
   n_anova <- setNames(pe$anova$n, rownames(pe$anova))
   n_level <- c(setNames(pe$coefficients$`n level`, paste("coefficients", rownames(pe$coefficients))),
                setNames(pe$anova$`n level`, paste("anova", rownames(pe$anova))))
-  one <- function(robust) {
+  one <- function(robust, ref.df = Inf) {
     Vhat <- if (robust) RESI:::.mixedCiCR2(fit, school) else as.matrix(stats::vcov(fit))
     est <- if (robust) resi_pe(fit, anova = TRUE, level = 2,
                                vcovfunc = function(object, ...) Vhat) else pe
     ci <- RESI:::.resi_ci_mixed(fit, Vhat, robust, n_coef, n_anova, ci_methods,
-                                cluster = school)
+                                cluster = school, ref.df = ref.df)
+    label <- if (!robust) "model" else if (is.finite(ref.df)) "CR2-t" else "CR2"
     p <- length(n_coef)
     se <- list(coefficients = ci$se[seq_len(p)], anova = ci$se[-seq_len(p)])
     do.call(rbind, lapply(ci_methods, function(method) {
       do.call(rbind, lapply(c("coefficients", "anova"), function(tab) {
         lim <- ci[[method]][[tab]]
-        data.frame(engine = engine, covariance = if (robust) "CR2" else "model",
+        data.frame(engine = engine, covariance = label,
                    method = method, table = tab, term = rownames(lim),
                    n_level = unname(n_level[paste(tab, rownames(lim))]),
                    est = est[[tab]][rownames(lim), "RESI"], se = unname(se[[tab]]),
@@ -32,17 +39,22 @@ ci_table <- function(fit, school, engine) {
       }))
     }))
   }
-  rbind(one(FALSE), one(TRUE))
+  out <- rbind(one(FALSE), one(TRUE))
+  if (cr2_t) {
+    g <- nlevels(RESI:::.mixedCiBase(fit, school)$cluster)
+    out <- rbind(out, one(TRUE, g - 1))
+  }
+  out
 }
 
 # rep_fun for hybridPlasmodeSim(): intervals from the replicate's lmer fit
 # and, if `lme = TRUE`, from an nlme::lme refit of the same model. Errors are
 # returned as strings so that a failure is recorded rather than fatal.
-make_ci_rep <- function(formula, school, child, lme = FALSE) {
+make_ci_rep <- function(formula, school, child, lme = FALSE, cr2_t = FALSE) {
   fixed <- reformulas::nobars(formula)
   random <- stats::as.formula(paste("~ 1 |", school, "/", child))
   function(fit, design) {
-    lmer_tab <- tryCatch(ci_table(fit, school, "lmer"), error = function(e) conditionMessage(e))
+    lmer_tab <- tryCatch(ci_table(fit, school, "lmer", cr2_t), error = function(e) conditionMessage(e))
     if (!lme) return(lmer_tab)
     lme_tab <- tryCatch({
       # Embed the data in the call so nlme::getData() can recover it later.
@@ -66,13 +78,13 @@ truth_table <- function(resi_obj) {
                    truth = resi_obj$anova[, "RESI"]))
 }
 
-# Coverage of S_Lyu (g, m -> Inf limit) and S_m (fixed-m expected-design RESI)
-# per cell, engine, covariance, method and term. `school`/`child` name the
-# lme4 grouping factors (e.g. "schoolid", "childid:schoolid").
-summarize_coverage <- function(out, school, child) {
+# Per-replicate intervals with the targets S_Lyu (g, m -> Inf limit) and S_m
+# (fixed-m expected-design RESI), one data frame per cell. `school`/`child`
+# name the lme4 grouping factors (e.g. "schoolid", "childid:schoolid").
+coverage_long <- function(out, school, child) {
   s_lyu <- truth_table(out$truth_resi)
   key <- function(d) paste(d$table, d$term)
-  do.call(rbind, lapply(seq_len(nrow(out$grid)), function(cell) {
+  lapply(seq_len(nrow(out$grid)), function(cell) {
     g <- out$grid$n_schools[cell]
     m <- out$grid$n_per_site[cell]
     s_m <- truth_table(expectedDesignResi(out$truth_fit, m, school, child))
@@ -86,13 +98,22 @@ summarize_coverage <- function(out, school, child) {
     long <- do.call(rbind, lapply(which(!failed), function(i) cbind(rep = i, extras[[i]])))
     long$S_Lyu <- s_lyu$truth[match(key(long), key(s_lyu))]
     long$S_m <- s_m$truth[match(key(long), key(s_m))]
+    cbind(n_schools = g, n_per_site = m, long,
+          level = ifelse(long$n_level == school, "between", "within"))
+  })
+}
+
+# Coverage of S_Lyu and S_m per cell, engine, covariance, method and term,
+# from coverage_long() output.
+summarize_coverage <- function(long_list) {
+  do.call(rbind, lapply(long_list, function(long) {
     keys <- unique(long[, c("engine", "covariance", "method", "table", "term")])
     do.call(rbind, lapply(seq_len(nrow(keys)), function(k) {
       d <- merge(keys[k, ], long)
       ok <- is.finite(d$lower) & is.finite(d$upper)
-      data.frame(n_schools = g, n_per_site = m, keys[k, ], row.names = NULL,
-                 level = if (d$n_level[1] == school) "between" else "within",
-                 n_rep = sum(ok), n_failed = sum(failed), S_Lyu = d$S_Lyu[1], S_m = d$S_m[1],
+      data.frame(n_schools = d$n_schools[1], n_per_site = d$n_per_site[1], keys[k, ],
+                 row.names = NULL, level = d$level[1],
+                 n_rep = sum(ok), S_Lyu = d$S_Lyu[1], S_m = d$S_m[1],
                  mean_est = mean(d$est), mc_sd_est = stats::sd(d$est),
                  mean_se = mean(d$se), median_width = stats::median(d$upper[ok] - d$lower[ok]),
                  coverage_S_Lyu = mean(d$lower[ok] <= d$S_Lyu[ok] & d$S_Lyu[ok] <= d$upper[ok]),

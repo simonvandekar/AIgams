@@ -3088,7 +3088,10 @@ window.Quarto = {
   <li><a href="#model-based-covariance" id="toc-model-based-covariance" class="nav-link" data-scroll-target="#model-based-covariance"><span class="header-section-number">5</span> Model-based covariance</a></li>
   <li><a href="#robust-cr2-clustered-at-school-covariance" id="toc-robust-cr2-clustered-at-school-covariance" class="nav-link" data-scroll-target="#robust-cr2-clustered-at-school-covariance"><span class="header-section-number">6</span> Robust (CR2, clustered at school) covariance</a></li>
   <li><a href="#numerical-checks-on-egsingle-implemented" id="toc-numerical-checks-on-egsingle-implemented" class="nav-link" data-scroll-target="#numerical-checks-on-egsingle-implemented"><span class="header-section-number">7</span> Numerical checks on <code>egsingle</code> (implemented)</a></li>
-  <li><a href="#intervals" id="toc-intervals" class="nav-link" data-scroll-target="#intervals"><span class="header-section-number">8</span> Intervals</a></li>
+  <li><a href="#intervals" id="toc-intervals" class="nav-link" data-scroll-target="#intervals"><span class="header-section-number">8</span> Intervals</a>
+  <ul class="collapse">
+  <li><a href="#finite-df-reference-cr2-adopted" id="toc-finite-df-reference-cr2-adopted" class="nav-link" data-scroll-target="#finite-df-reference-cr2-adopted"><span class="header-section-number">8.1</span> Finite-df reference (CR2, adopted)</a></li>
+  </ul></li>
   <li><a href="#targets-and-expected-coverage" id="toc-targets-and-expected-coverage" class="nav-link" data-scroll-target="#targets-and-expected-coverage"><span class="header-section-number">9</span> Targets and expected coverage</a></li>
   <li><a href="#implementation-provisional-pending-review" id="toc-implementation-provisional-pending-review" class="nav-link" data-scroll-target="#implementation-provisional-pending-review"><span class="header-section-number">10</span> Implementation (provisional, pending review)</a></li>
   <li><a href="#nlmelme-fits" id="toc-nlmelme-fits" class="nav-link" data-scroll-target="#nlmelme-fits"><span class="header-section-number">11</span> <code>nlme::lme</code> fits</a></li>
@@ -3300,6 +3303,39 @@ I\,\mathcal I^{-1}\)</span>), where <span class="math inline">\(\mathcal L^{-1}_
 </tbody>
 </table>
 <p>The signed-CF skewness needs per-replicate influence values. I will use the school-level <span class="math inline">\(\hat\phi_s\)</span> with <span class="math inline">\(g\)</span> in place of <span class="math inline">\(n\)</span>: <span class="math inline">\(\gamma_1 = g^{-1/2}\,\overline{\phi^3}/\overline{\phi^2}^{3/2}\)</span>. The <span class="math inline">\(\psi\)</span> term is not a sum over schools and is treated as Gaussian. For the model-based version, (a) is represented by <span class="math inline">\(J_\beta\mathcal I^{-1}\hat U_s\)</span> for this purpose.</p>
+<section id="finite-df-reference-cr2-adopted" class="level3" data-number="8.1">
+<h3 data-number="8.1" class="anchored" data-anchor-id="finite-df-reference-cr2-adopted"><span class="header-section-number">8.1</span> Finite-df reference (CR2, adopted)</h3>
+<p>For cluster-robust (CR2) intervals the package uses <span class="math inline">\(d = g - 1\)</span> automatically (<code>ref.df = NULL</code> resolves to <span class="math inline">\(g-1\)</span> if <code>robust</code>, <span class="math inline">\(\infty\)</span> otherwise; there is no new user option). With reference df <span class="math inline">\(d\)</span>, the Gaussian noise in each algorithm is replaced by <span class="math inline">\(t_d\)</span> noise, and the signal is left unscaled:</p>
+<ul>
+<li>Normal: <span class="math inline">\(z\)</span> and <span class="math inline">\(\chi^2_{m_1}\)</span> quantiles become <span class="math inline">\(t_d\)</span> and <span class="math inline">\(m_1 F(m_1, d)\)</span>.</li>
+<li>QF/CF: <span class="math inline">\(T^2 = \sum_k \lambda_k\bigl(Z_k\sqrt{d/W} + \sqrt{\nu_k(S)}\bigr)^2\)</span>, <span class="math inline">\(W \sim \chi^2_d\)</span>. Given <span class="math inline">\(W = w\)</span> this is the <span class="math inline">\(\chi^2\)</span>-reference law at <span class="math inline">\(S\sqrt{w/d}\)</span>, exceeding <span class="math inline">\(T^2_{\text{obs}}\,w/d\)</span> (since <span class="math inline">\(\nu_k \propto S^2\)</span>), and the probability is averaged over <span class="math inline">\(W\)</span> with a 20-node generalized Gauss–Laguerre rule (max error <span class="math inline">\(3\times10^{-4}\)</span> at <span class="math inline">\(d=4\)</span>, <span class="math inline">\(\le 2\times10^{-6}\)</span> for <span class="math inline">\(d \ge 9\)</span> against the exact shifted <span class="math inline">\(t\)</span>). Under <span class="math inline">\(H_0\)</span>, <span class="math inline">\(T^2/m_1 \sim F(m_1, d)\)</span>.</li>
+<li>Signed CF: the moments of <span class="math inline">\(Z\sqrt{d/W}\)</span> add to the scale and the <span class="math inline">\(\gamma_1\)</span>, <span class="math inline">\(\gamma_2\)</span> terms.</li>
+</ul>
+<p>The exact noncentral-<span class="math inline">\(F\)</span> alternative, <span class="math inline">\(T^2 = Q\,d/W\)</span>, scales the signal by <span class="math inline">\(d/W\)</span> as well. It adds <span class="math inline">\(n S^2/(2d)\)</span> to the variance of <span class="math inline">\(n\hat S^2\)</span>, which double counts: <span class="math inline">\(\hat\Sigma_R\)</span> already contains the variance-estimation uncertainty. For within-school terms (<span class="math inline">\(n \gg g\)</span>) that version over-covered badly (<code>year</code> ANOVA 0.97 against 0.86 for the signed <span class="math inline">\(t\)</span> interval), and its unsigned 1-df interval disagreed with the signed one. With the noise-only form, the two agree.</p>
+<p>Evaluation at <span class="math inline">\(g = 15\)</span> (mean coverage of <span class="math inline">\(S_m\)</span> over non-intercept terms, 1000 replicates, <code>tests/run_cr2_reference_eval.R</code>):</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th></th>
+<th>egsingle CR2 → CR2-<span class="math inline">\(t\)</span></th>
+<th>STAR CR2 → CR2-<span class="math inline">\(t\)</span></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>coefficients</td>
+<td>0.89 → 0.92</td>
+<td>0.89 → 0.92</td>
+</tr>
+<tr class="even">
+<td>ANOVA (QF / CF)</td>
+<td>0.91 → 0.93 / 0.94</td>
+<td>0.90 → 0.93 / 0.94</td>
+</tr>
+</tbody>
+</table>
+<p>Maximum coverage is about 0.98. The intercept is essentially unchanged, since its under-coverage comes from skewness and not from the quantile. At <span class="math inline">\(g = 100\)</span>, <span class="math inline">\(t_{99}\)</span> is effectively normal.</p>
+</section>
 </section>
 <section id="targets-and-expected-coverage" class="level2" data-number="9">
 <h2 data-number="9" class="anchored" data-anchor-id="targets-and-expected-coverage"><span class="header-section-number">9</span> Targets and expected coverage</h2>
@@ -3338,12 +3374,12 @@ I\,\mathcal I^{-1}\)</span>), where <span class="math inline">\(\mathcal L^{-1}_
 </section>
 <section id="questions-for-review" class="level2" data-number="12">
 <h2 data-number="12" class="anchored" data-anchor-id="questions-for-review"><span class="header-section-number">12</span> Questions for review</h2>
-<p>The implementation provisionally uses the first option in each question.</p>
+<p>Simon’s responses are recorded under each question.</p>
 <ol type="1">
-<li><strong>Design term (b).</strong> Include it (population of schools; needed to cover <span class="math inline">\(S_m\)</span>/<span class="math inline">\(S_{\text{Lyu}}\)</span> in the plasmode) or provide conditional-on-design intervals? Default proposal: include, with an option to drop.</li>
-<li><strong>Model-based <span class="math inline">\(\psi\)</span> term</strong> via numerical (RE)ML Hessian: acceptable?</li>
-<li><strong>Robust version:</strong> drop the <span class="math inline">\(\psi\)</span> term by the stationarity argument, and use unadjusted <span class="math inline">\(\hat U_s\)</span> for term (c) while <span class="math inline">\(\hat\Sigma_{\beta,k}\)</span> uses CR2: acceptable?</li>
-<li><strong>Quantiles:</strong> keep standard normal / <span class="math inline">\(\chi^2\)</span> references as in the manuscript, or offer <span class="math inline">\(t_{g-1}\)</span> (or a Satterthwaite df) for small <span class="math inline">\(g\)</span>?</li>
+<li><strong>Design term (b).</strong> Include it (population of schools; needed to cover <span class="math inline">\(S_m\)</span>/<span class="math inline">\(S_{\text{Lyu}}\)</span> in the plasmode) or provide conditional-on-design intervals? Default proposal: include, with an option to drop. <em>Decision: include (approved).</em></li>
+<li><strong>Model-based <span class="math inline">\(\psi\)</span> term</strong> via numerical (RE)ML Hessian: acceptable? <em>Decision: approved.</em></li>
+<li><strong>Robust version:</strong> drop the <span class="math inline">\(\psi\)</span> term by the stationarity argument, and use unadjusted <span class="math inline">\(\hat U_s\)</span> for term (c) while <span class="math inline">\(\hat\Sigma_{\beta,k}\)</span> uses CR2: acceptable? <em>Decision: tentatively approved; Simon to review the derivation more closely.</em></li>
+<li><strong>Quantiles:</strong> keep standard normal / <span class="math inline">\(\chi^2\)</span> references as in the manuscript, or offer <span class="math inline">\(t_{g-1}\)</span> (or a Satterthwaite df) for small <span class="math inline">\(g\)</span>? <em>Decision: model-based intervals keep normal / <span class="math inline">\(\chi^2\)</span> references (the intercept under-coverage at <span class="math inline">\(g=15\)</span> comes from skewness and SE under-estimation, not the quantile). For CR2, <span class="math inline">\(t_{g-1}\)</span> / <span class="math inline">\(F(\cdot, g-1)\)</span> is adopted automatically (approved: “do option 1 if it does not lose significant precision”; Gauss–Laguerre quadrature keeps it accurate and fast).</em></li>
 <li><strong><code>lme</code> (nlme) objects:</strong> resolved. Simon asked for lme intervals, and they are implemented for fits without variance/correlation structures (previous section).</li>
 </ol>
 </section>

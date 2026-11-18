@@ -238,6 +238,44 @@ $\psi$ term is not a sum over schools and is treated as Gaussian. For the
 model-based version, (a) is represented by $J_\beta\mathcal I^{-1}\hat U_s$
 for this purpose.
 
+### Finite-df reference (CR2, adopted)
+
+For cluster-robust (CR2) intervals the package uses $d = g - 1$
+automatically (`ref.df = NULL` resolves to $g-1$ if `robust`, $\infty$
+otherwise; there is no new user option). With reference df $d$, the Gaussian noise in
+each algorithm is replaced by $t_d$ noise, and the signal is left unscaled:
+
+- Normal: $z$ and $\chi^2_{m_1}$ quantiles become $t_d$ and $m_1 F(m_1, d)$.
+- QF/CF: $T^2 = \sum_k \lambda_k\bigl(Z_k\sqrt{d/W} + \sqrt{\nu_k(S)}\bigr)^2$,
+  $W \sim \chi^2_d$. Given $W = w$ this is the $\chi^2$-reference law at
+  $S\sqrt{w/d}$, exceeding $T^2_{\text{obs}}\,w/d$ (since $\nu_k \propto S^2$),
+  and the probability is averaged over $W$ with a 20-node generalized
+  Gauss–Laguerre rule (max error $3\times10^{-4}$ at $d=4$, $\le 2\times10^{-6}$
+  for $d \ge 9$ against the exact shifted $t$). Under
+  $H_0$, $T^2/m_1 \sim F(m_1, d)$.
+- Signed CF: the moments of $Z\sqrt{d/W}$ add to the scale and the
+  $\gamma_1$, $\gamma_2$ terms.
+
+The exact noncentral-$F$ alternative, $T^2 = Q\,d/W$, scales the signal by
+$d/W$ as well. It adds $n S^2/(2d)$ to the variance of $n\hat S^2$, which
+double counts: $\hat\Sigma_R$ already contains the variance-estimation
+uncertainty. For within-school terms ($n \gg g$) that version over-covered
+badly (`year` ANOVA 0.97 against 0.86 for the signed $t$ interval), and its
+unsigned 1-df interval disagreed with the signed one. With the noise-only
+form, the two agree.
+
+Evaluation at $g = 15$ (mean coverage of $S_m$ over non-intercept terms,
+1000 replicates, `tests/run_cr2_reference_eval.R`):
+
+| | egsingle CR2 → CR2-$t$ | STAR CR2 → CR2-$t$ |
+|---|---|---|
+| coefficients | 0.89 → 0.92 | 0.89 → 0.92 |
+| ANOVA (QF / CF) | 0.91 → 0.93 / 0.94 | 0.90 → 0.93 / 0.94 |
+
+Maximum coverage is about 0.98. The intercept is essentially unchanged, since
+its under-coverage comes from skewness and not from the quantile. At
+$g = 100$, $t_{99}$ is effectively normal.
+
 ## Targets and expected coverage
 
 Each interval is evaluated against both targets:
@@ -337,17 +375,26 @@ and give the same coverage (`calibration_report.Rmd`).
 
 ## Questions for review
 
-The implementation provisionally uses the first option in each question.
+Simon's responses are recorded under each question.
 
 1. **Design term (b).** Include it (population of schools; needed to cover
    $S_m$/$S_{\text{Lyu}}$ in the plasmode) or provide conditional-on-design
    intervals? Default proposal: include, with an option to drop.
+   *Decision: include (approved).*
 2. **Model-based $\psi$ term** via numerical (RE)ML Hessian: acceptable?
+   *Decision: approved.*
 3. **Robust version:** drop the $\psi$ term by the stationarity argument, and
    use unadjusted $\hat U_s$ for term (c) while $\hat\Sigma_{\beta,k}$ uses
    CR2: acceptable?
+   *Decision: tentatively approved; Simon to review the derivation more closely.*
 4. **Quantiles:** keep standard normal / $\chi^2$ references as in the
    manuscript, or offer $t_{g-1}$ (or a Satterthwaite df) for small $g$?
+   *Decision: model-based intervals keep normal / $\chi^2$ references (the
+   intercept under-coverage at $g=15$ comes from skewness and SE
+   under-estimation, not the quantile). For CR2, $t_{g-1}$ / $F(\cdot, g-1)$
+   is adopted automatically (approved: "do option 1 if it does not lose
+   significant precision"; Gauss–Laguerre quadrature keeps it accurate and
+   fast).*
 5. **`lme` (nlme) objects:** resolved. Simon asked for lme intervals, and
    they are implemented for fits without variance/correlation structures
    (previous section).

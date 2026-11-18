@@ -1,24 +1,22 @@
-# Hybrid plasmode calibration of mixed-model RESI on mlmRev::egsingle
-# (Model A). Writes the summaries read by
+# [AI-generated: GitHub Copilot, 2026-11-15]
+# [Prompt summary: run the egsingle hybrid plasmode calibration of mixed-model
+#  RESI.]
+
+# Hybrid plasmode calibration of mixed-model RESI on mlmRev::egsingle,
+# Model A (random intercepts) or Model B (adds a student-level random slope
+# for year). Writes the summaries read by
 # resiLongCalibrationSim/calibration_report.Rmd. Run from the AIgams root:
-#   Rscript tests/run_hybrid_plasmode.R
+#   Rscript tests/run_hybrid_plasmode.R [A|B]
 # Full grid (12 cells x 1000 replicates) takes ~1.5 h on 24 cores.
 
 devtools::load_all("RESI")
-
-egsingle <- local({
-  e <- new.env()
-  utils::data("egsingle", package = "mlmRev", envir = e)
-  e$egsingle
-})
-egsingle$size_100 <- egsingle$size / 100
-egsingle$lowinc_10 <- egsingle$lowinc / 10
-
-form_A <- math ~ year + female + black + hispanic + size_100 + lowinc_10 +
-  (1 | schoolid/childid)
+source("tests/egsingle_models.R")
+model <- commandArgs(trailingOnly = TRUE)[1]
+if (is.na(model)) model <- "A"
+suffix <- if (model == "A") "" else paste0("_", model)
 
 out <- hybridPlasmodeSim(
-  form_A, egsingle, school = "schoolid", child = "childid",
+  egsingle_models[[model]], egsingle, school = "schoolid", child = "childid",
   n_schools = getOption("resi.n_schools", c(15, 30, 60, 100)),
   n_per_site = getOption("resi.n_per_site", c(25, 100, 200)),
   nsim = getOption("resi.nsim", 1000L),
@@ -26,8 +24,8 @@ out <- hybridPlasmodeSim(
   seed = 2026)
 
 out_dir <- getOption("resi.output.dir", "resiLongCalibrationSim")
-saveRDS(out$summary, file.path(out_dir, "hybrid_plasmode_summary.rds"))
-saveRDS(out$resi_summary, file.path(out_dir, "hybrid_plasmode_resi_summary.rds"))
+saveRDS(out$summary, file.path(out_dir, paste0("hybrid_plasmode", suffix, "_summary.rds")))
+saveRDS(out$resi_summary, file.path(out_dir, paste0("hybrid_plasmode", suffix, "_resi_summary.rds")))
 
 cat("\n=== Fixed effects: mean model SE / MC SD ===\n")
 fe <- out$summary[grepl("^beta_", out$summary$param), ]

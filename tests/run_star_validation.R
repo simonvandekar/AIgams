@@ -1,3 +1,7 @@
+# [AI-generated: GitHub Copilot, 2026-11-16]
+# [Prompt summary: out-of-sample calibration and CI coverage of mixed-model
+#  RESI on mlmRev::star.]
+
 # Out-of-sample validation of mixed-model RESI on mlmRev::star (Tennessee
 # STAR), with the same hybrid plasmode framework as egsingle:
 #   1. point-estimate calibration on the 4 x 3 (n_schools x n_per_site) grid
@@ -39,7 +43,9 @@ if ("coverage" %in% steps) {
     n_per_site = getOption("resi.cov.n_per_site", c(25, 200)),
     nsim = nsim, mc.cores = mc_cores, seed = 2027, keep_reps = TRUE,
     rep_fun = make_ci_rep(form_star, "sch", "sid"))
-  coverage <- summarize_coverage(cov_out, "sch", "sid:sch")
+  long <- coverage_long(cov_out, "sch", "sid:sch")
+  coverage <- summarize_coverage(long)
+  if (getOption("resi.save.reps", FALSE)) saveRDS(do.call(rbind, long), file.path(out_dir, "star_ci_coverage_reps.rds"))
   saveRDS(coverage, file.path(out_dir, "star_ci_coverage.rds"))
   print_coverage(coverage)
 }

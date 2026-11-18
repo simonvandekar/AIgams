@@ -1,3 +1,7 @@
+# [AI-generated: GitHub Copilot, 2026-11-16]
+# [Prompt summary: prepare mlmRev::star for the mixed-model RESI validation
+#  simulation.]
+
 # mlmRev::star (Tennessee STAR) prepared for the mixed-model RESI validation
 # simulation: school (sch) > student > yearly measurement, the same nesting as
 # egsingle. Complete cases on the model variables. Rare categories are merged

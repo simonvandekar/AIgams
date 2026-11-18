@@ -1,0 +1,238 @@
+---
+title: "RESI for mgcv `gam` / `bam` fits"
+subtitle: "Documentation review, target and estimator decisions (nothing implemented yet)"
+author: "RESI package project notes"
+date: 2026-11-17
+format:
+  html:
+    toc: true
+    number-sections: true
+    embed-resources: true
+---
+
+<!-- [AI-generated: GitHub Copilot, 2026-11-17]
+     [Prompt summary: Goal 3 step 1 — review the mgcv documentation on
+      smooth-term tests and covariance matrices, and set out candidate RESI
+      targets/estimators for gam/bam before any code is written.] -->
+
+## Purpose
+
+Goal 3 (`instructions/instructions.md`) adds `resi_pe`/`resi` methods for
+`mgcv::gam` and `mgcv::bam`. SNV's acceptance criterion is that the point
+estimates are calibrated first: MC means converge to a defined population
+RESI and model SEs match the MC SD, as well as in the mixed-model work. CIs
+come only after that. This note covers:
+
+1. what mgcv computes for parametric and smooth terms, and the documented
+   caveats (from the mgcv 1.9.1 help pages, cited below);
+2. how those quantities behave as $n$ grows, which determines what a
+   consistent target can be;
+3. candidate targets and estimators to compare in the null and calibration
+   simulations;
+4. questions for SNV. **The target must be agreed before any code is written.**
+
+## What mgcv computes
+
+### Covariance matrices (`?vcov.gam`, `?gamObject`)
+
+- `Vp` (default, `vcov(b)`): Bayesian posterior covariance. It includes the
+  expected squared smoothing bias under the smoothing prior.
+- `Ve` (`freq = TRUE`): frequentist covariance of the penalized estimator,
+  conditional on the smoothing parameters $\lambda$.
+- `Vc` (`unconditional = TRUE`): `Vp` corrected for smoothing-parameter
+  uncertainty (available for REML/ML fits).
+- `vcov(b, sandwich = TRUE)`: a sandwich estimate, with or without the
+  squared-bias component. So a robust covariance exists in mgcv itself;
+  `sandwich::vcovHC` is not needed.
+
+All three model-based matrices assume independence. There is no clustering
+option.
+
+### Parametric terms (`?summary.gam`)
+
+- Coefficients: Wald $t$ using `Vp`, with a $t$ reference on the residual df
+  if the scale is estimated. `freq = TRUE` uses `Ve`. Since parametric terms
+  are unpenalized (unless `paraPen` is used), the two "are rather similar".
+- Multi-df parametric terms (`pTerms`): Wald $\chi^2$ on `Vp`, with an
+  $F(\text{df}, \text{residual df})$ reference when the scale is estimated.
+
+These are ordinary Wald statistics, so the existing `resi_pe` conversions
+should apply directly. Calibration should still confirm this, because the
+coefficients are estimated jointly with penalized smooths.
+
+### Smooth terms (`?summary.gam`, `mgcv:::testStat`, Wood 2013a)
+
+For smooth $j$ with coefficients $\hat p$, design columns $X_j = QR$ and
+covariance $V = $ `Vp`:
+
+- The statistic is $T_j = \hat p^\top R^\top (R V R^\top)^{-}_{r} R \hat p$,
+  a Wald quadratic form with a **rank-$r$ truncated pseudo-inverse**, where
+  $r = $ `edf1` $= \operatorname{tr}(2A - AA)$ restricted to the term (the
+  reported `Ref.df`). It is not the usual `edf` ($\operatorname{tr}(A)$).
+- Fractional $r$ is handled by rotating the last two eigen-directions, so
+  the null distribution is a weighted $\chi^2$ mixture whose weights sum to
+  $r$. Hence $E_0[T_j] \approx r$. With an estimated scale, mgcv uses an
+  $F$-type ratio and reports `F` $= T_j / r$.
+- Justification: Nychka (1988) and Marra & Wood (2012). Bayesian intervals
+  have good "across-the-function" coverage when smoothing bias is small
+  relative to variance.
+
+### Documented caveats
+
+- p-values are computed **conditional on $\hat\lambda$**. They are "somewhat
+  too low" when $\lambda$ is poorly identified, e.g. nested smooths or high
+  concurvity.
+- ML smoothness selection behaves best in simulations, REML second, and
+  GCV can occasionally undersmooth severely.
+- Terms with a **zero-dimensional null space** (`bs = "re"`, shrinkage
+  smooths, `select = TRUE` penalties) break the Nychka requirement. For
+  these, mgcv switches to a likelihood-ratio test with a boundary reference
+  (Wood 2013b), so there is no Wald quadratic form to convert.
+- Multi-model `anova.gam` p-values are "only approximate" and usually too
+  low, badly so for zero-null-space terms. The single-model Wald version is
+  better justified.
+- p-values for `paraPen`-penalized parametric terms "will not be good".
+
+## Behaviour as $n \to \infty$: what can the target be?
+
+The RESI conversion for a Wald statistic is
+$\hat S^2 = \max\{0, (T - \text{df})/n\}$. For this to be consistent, $T/n$
+must converge to a fixed population quantity. The penalty complicates this:
+`edf`, `edf1` and the shrinkage of $\hat p$ all depend on $\hat\lambda$, which
+depends on $n$.
+
+Preliminary check (one replicate per $n$, not a simulation): Gaussian,
+$y = \sin(2\pi x) + 0.5 z + \varepsilon$, $x, z \sim U(0,1)$, $\sigma = 1$,
+`gam(y ~ s(x, k = 10) + s(z, k = 10), method = "REML")`. The basis-free
+truths are $S^2_x = \operatorname{var}(\sin 2\pi x) = 0.5$ and
+$S^2_z = 0.25/12 = 0.0208$.
+
+| $n$ | `edf` $x$ | `Ref.df` $x$ | $\hat\lambda_x$ | $(T_x - r_x)/n$ | `edf` $z$ | `Ref.df` $z$ | $(T_z - r_z)/n$ |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 200 | 4.49 | 5.53 | 0.129 | 0.446 | 2.45 | 3.04 | 0.055 |
+| 2000 | 7.11 | 8.16 | 0.134 | 0.457 | 1.00 | 1.00 | 0.018 |
+| 20000 | 8.52 | 8.93 | 0.181 | 0.484 | 1.78 | 2.22 | 0.022 |
+
+Observations, to be confirmed by simulation:
+
+- For a non-linear $f$, REML's $\hat\lambda$ stays $O(1)$ while
+  $X^\top X = O(n)$. The penalty therefore becomes negligible, `edf` rises
+  towards the basis dimension $k - 1$, and `Vp` $\to$ `Ve` $\to$ the
+  unpenalized covariance. In the limit the fit is an **unpenalized
+  regression spline** on the fixed basis.
+- $(T - r)/n$ approaches the truth from below, slowly. Both the shrinkage of
+  $\hat p$ and the bias component in `Vp` reduce $T$. That is a finite-$n$
+  bias of order (smoothing bias / $n$), not the $O(1/n)$ bias that the df
+  correction removes.
+- For an $f$ in the penalty null space (here linear $z$), $\hat\lambda$ can
+  go to $\infty$, so `edf` jumps between 1 and larger values from sample to
+  sample. The df correction then varies from fit to fit even though the
+  target does not.
+
+## Candidate targets
+
+- **T1, basis-free (proposed primary).** The population additive model
+  $E[y \mid x] = \beta_0 + \sum_j f_j(x_j) + x_p^\top\beta_p$ has
+  $S_j^2 = E[\{f_j(X_j) - \Pi_{-j} f_j\}^2] / \sigma^2$. Here $\Pi_{-j}$ is
+  the population projection onto the other model terms, so $S_j^2$ is the
+  variance explained by smooth $j$ beyond the other terms, scaled by the
+  residual variance. For a single-df linear term it reduces to the usual
+  RESI. It does not depend on the basis or $k$, so it is the quantity users
+  would interpret.
+- **T2, fixed-basis regression-spline limit.** The same quantity with $f_j$
+  replaced by its projection onto the span of the term's basis (dimension
+  $k_j - 1$). This is the large-$n$ limit of the fitted model when $k$ is
+  fixed. T2 $\le$ T1, and T2 $\to$ T1 as $k$ grows for smooth $f$. The gap
+  is the basis-truncation error, which `gam.check` / `k.check` diagnose.
+
+In the plasmode setting, the truth can be computed from a large-$n$
+unpenalized fit (T2) or a large-$k$ fit (approximately T1), in the same way
+that the Lyu limit was computed from full-data estimates.
+
+## Candidate point estimators
+
+All use $\hat S^2 = \max\{0, (T - \text{df})/n\}$ (or the $F$-based
+equivalent), and differ in $T$, the covariance and the df:
+
+a. mgcv's `summary.gam` statistic: $T_j$ with `Vp`, truncated at
+   $r = $ `Ref.df`, df $= r$.
+
+b. Full-rank Wald $\hat p^\top V^{-1} \hat p$ (rank $k_j - 1$), with $V$ =
+   `Vp`, `Ve`, `Vc` or the sandwich, and df $=$ `edf`, `edf1` or $k_j - 1$.
+
+c. Unpenalized regression spline (`fx = TRUE`, or an `lm`/`glm` on the same
+   basis). This is the standard RESI with df $= k_j - 1$. It is consistent
+   for T2 by existing theory, at the cost of variance, and serves as a
+   reference.
+
+d. The existing default `resi_pe` path applied to a gam (with `edf` as df),
+   which is what users would get today. It is included to document the
+   status quo.
+
+For parametric terms, the standard coefficient conversion is used with
+`Vp` (and `Ve` as a check).
+
+## Simulation plan (next todos; not started)
+
+1. **Null check** (`gam-null-check`): $f_j \equiv 0$ for one smooth.
+   - Compare p-value uniformity for each candidate.
+   - Compare the distribution of $\hat S^2$, i.e. the null bias at $S = 0$.
+   - Use smooth and linear alternatives for the other terms, $n \in
+     \{200, 1000, 5000\}$, REML.
+2. **Calibration** (`gam-calibration-sim`): Gaussian identity link.
+   - Effects: a non-linear smooth, a linear term fitted with `s()`, a
+     parametric covariate, and a concurvity case.
+   - $n$ from 200 to 20000, $k \in \{10, 20\}$, 1000 replicates. Include
+     `gam` (REML) and `bam` (default, `discrete = FALSE`).
+   - Compare the MC mean against T1 and T2, and the model SE against the MC
+     SD, in the same format as the mixed-model calibration report.
+   - Then repeat with a plasmode on a real dataset.
+3. Non-Gaussian families (binomial, Poisson) only after the Gaussian case is
+   settled.
+
+## Questions for review
+
+1. **Target:** T1 (basis-free) as the primary target, with T2 reported as a
+   diagnostic? T1 is what users would interpret. T2 is what a fixed-$k$ fit
+   estimates consistently.
+   *Decision (SNV, 2026-11-17): T1 primary, T2 as a diagnostic.*
+2. **df correction:** `Ref.df` (`edf1`, which matches mgcv's null mean),
+   `edf`, or $k - 1$? This only matters at $O(1/n)$, but it is unstable for
+   null-space terms (see the $z$ row above).
+   *Decision: `Ref.df`.* Rationale (SNV): the $-\text{df}$ correction is the
+   contribution of the estimator's variance to $E[T]$. With
+   $T = \hat p^\top V_r^- \hat p$, we have
+   $E[T] = p^\top V_r^- p + \operatorname{tr}\{V_r^-\operatorname{Cov}(\hat p)\}$,
+   so the correct df is $\operatorname{tr}\{V_r^-\operatorname{Cov}(\hat p)\}$.
+   mgcv chooses $r$ and the fractional-rank weights so that this equals $r =$
+   `Ref.df` when $V$ is the covariance of $\hat p$, which is the null mean
+   noted above. The calibration simulations should check this trace directly,
+   since `Vp` also contains a bias component, and since $E[\hat p] \ne p$ under
+   penalization.
+3. **Covariance:** the instructions say to start with Bayesian `Vp`. Is it
+   fine to also include `Ve`, `Vc` and the mgcv sandwich in the calibration
+   simulations only, so that the final choice is evidence-based? None would
+   be exposed as a user option unless needed.
+   *Decision: use the mgcv defaults (`Vp`) only.* **`Ve`, `Vc` and the sandwich
+   have not been considered**; revisit them if calibration shows problems
+   (e.g. SE/MC SD far from 1, or $\hat\lambda$ poorly identified).
+4. **Scope:** exclude zero-null-space terms (`bs = "re"`, `select = TRUE`,
+   shrinkage bases) from the first version, warn and return `NA`? mgcv itself
+   does not use a Wald test for them.
+   *Decision: yes, excluded from v1 (warn, `NA`).*
+5. **Families:** Gaussian first, then binomial/Poisson?
+   *Decision: yes.*
+
+## References
+
+- Marra, G. and Wood, S.N. (2012) Coverage properties of confidence
+  intervals for generalized additive model components. *Scand. J. Stat.*
+  39, 53–74.
+- Nychka, D. (1988) Bayesian confidence intervals for smoothing splines.
+  *JASA* 83, 1134–1143.
+- Wood, S.N. (2013a) On p-values for smooth components of an extended
+  generalized additive model. *Biometrika* 100, 221–228.
+- Wood, S.N. (2013b) A simple test for random effects in regression models.
+  *Biometrika* 100, 1005–1010.
+- Wood, S.N. (2017) *Generalized Additive Models: An Introduction with R*,
+  2nd ed. CRC Press.
