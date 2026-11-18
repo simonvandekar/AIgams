@@ -3092,9 +3092,10 @@ window.Quarto = {
   <li><a href="#behaviour-as-n-to-infty-what-can-the-target-be" id="toc-behaviour-as-n-to-infty-what-can-the-target-be" class="nav-link" data-scroll-target="#behaviour-as-n-to-infty-what-can-the-target-be"><span class="header-section-number">3</span> Behaviour as <span class="math inline">\(n \to \infty\)</span>: what can the target be?</a></li>
   <li><a href="#candidate-targets" id="toc-candidate-targets" class="nav-link" data-scroll-target="#candidate-targets"><span class="header-section-number">4</span> Candidate targets</a></li>
   <li><a href="#candidate-point-estimators" id="toc-candidate-point-estimators" class="nav-link" data-scroll-target="#candidate-point-estimators"><span class="header-section-number">5</span> Candidate point estimators</a></li>
-  <li><a href="#simulation-plan-next-todos-not-started" id="toc-simulation-plan-next-todos-not-started" class="nav-link" data-scroll-target="#simulation-plan-next-todos-not-started"><span class="header-section-number">6</span> Simulation plan (next todos; not started)</a></li>
-  <li><a href="#questions-for-review" id="toc-questions-for-review" class="nav-link" data-scroll-target="#questions-for-review"><span class="header-section-number">7</span> Questions for review</a></li>
-  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references"><span class="header-section-number">8</span> References</a></li>
+  <li><a href="#first-simulation-results-gaussian" id="toc-first-simulation-results-gaussian" class="nav-link" data-scroll-target="#first-simulation-results-gaussian"><span class="header-section-number">6</span> First simulation results (Gaussian)</a></li>
+  <li><a href="#remaining-simulation-plan" id="toc-remaining-simulation-plan" class="nav-link" data-scroll-target="#remaining-simulation-plan"><span class="header-section-number">7</span> Remaining simulation plan</a></li>
+  <li><a href="#questions-for-review" id="toc-questions-for-review" class="nav-link" data-scroll-target="#questions-for-review"><span class="header-section-number">8</span> Questions for review</a></li>
+  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references"><span class="header-section-number">9</span> References</a></li>
   </ul>
 </nav>
 </div>
@@ -3272,17 +3273,22 @@ window.Quarto = {
 </ol>
 <p>For parametric terms, the standard coefficient conversion is used with <code>Vp</code> (and <code>Ve</code> as a check).</p>
 </section>
-<section id="simulation-plan-next-todos-not-started" class="level2" data-number="6">
-<h2 data-number="6" class="anchored" data-anchor-id="simulation-plan-next-todos-not-started"><span class="header-section-number">6</span> Simulation plan (next todos; not started)</h2>
+<section id="first-simulation-results-gaussian" class="level2" data-number="6">
+<h2 data-number="6" class="anchored" data-anchor-id="first-simulation-results-gaussian"><span class="header-section-number">6</span> First simulation results (Gaussian)</h2>
+<p><code>tests/run_gam_calibration.R</code> (report: <code>gamCalibrationSim/gam_calibration_report.html</code>) combines the null check and the calibration in one design: - a non-linear <code>s(x1)</code>, a linear effect fitted with <code>s(x2)</code> (x1 and x2 correlated, <span class="math inline">\(\rho = 0.5\)</span>), a null <code>s(x3)</code>, and parametric <code>w</code> (0.2) and <code>w0</code> (null); - <span class="math inline">\(n \in \{200, 1000, 5000, 20000\}\)</span>, <span class="math inline">\(k \in \{10, 20\}\)</span>, 500 replicates; - <code>gam</code> (REML) and <code>bam</code>, penalized (mgcv) and unpenalized (<code>fx = TRUE</code>).</p>
+<p>Results: - <strong>Null:</strong> rejection rates 0.03-0.06 for every engine, <span class="math inline">\(k\)</span> and <span class="math inline">\(n\)</span>. - <strong>Consistency:</strong> the mgcv RESI (<code>f2S(F, Ref.df, rdf, n)</code>) converges to T1. The relative bias is -4% / -12% (<code>s(x1)</code> / <code>s(x2)</code>) at <span class="math inline">\(n = 200\)</span>, -0.7% / -1.9% at <span class="math inline">\(n = 1000\)</span>, and below 1% at <span class="math inline">\(n \ge 5000\)</span>. It is less biased than the unpenalized reference at small <span class="math inline">\(n\)</span>. T1 = T2 in this design. - <strong><code>Ref.df</code>:</strong> under the null, <span class="math inline">\(E[T] \approx\)</span> <code>Ref.df</code> <span class="math inline">\(+ 0.25\)</span>, a bias of <span class="math inline">\(0.25/n\)</span> in <span class="math inline">\(\hat S^2\)</span>, which is negligible. - <strong>SEs:</strong> <code>w</code> SE/MC SD 0.98-1.05. Pointwise <code>Vp</code> SE / MC RMSE 0.91-1.08; the lowest is for the linear <code>s(x2)</code> at large <span class="math inline">\(n\)</span> (near the penalty null space). - The preliminary single-fit impression of a slow negative bias (earlier section) was replicate noise; it is not borne out by the Monte Carlo means.</p>
+</section>
+<section id="remaining-simulation-plan" class="level2" data-number="7">
+<h2 data-number="7" class="anchored" data-anchor-id="remaining-simulation-plan"><span class="header-section-number">7</span> Remaining simulation plan</h2>
 <ol type="1">
-<li><strong>Null check</strong> (<code>gam-null-check</code>): <span class="math inline">\(f_j \equiv 0\)</span> for one smooth.
+<li><strong>Null check</strong> (<code>gam-null-check</code>, done for the Gaussian design above): <span class="math inline">\(f_j \equiv 0\)</span> for one smooth.
 <ul>
 <li>Compare p-value uniformity for each candidate.</li>
 <li>Compare the distribution of <span class="math inline">\(\hat S^2\)</span>, i.e. the null bias at <span class="math inline">\(S = 0\)</span>.</li>
 <li>Use smooth and linear alternatives for the other terms, <span class="math inline">\(n \in
 \{200, 1000, 5000\}\)</span>, REML.</li>
 </ul></li>
-<li><strong>Calibration</strong> (<code>gam-calibration-sim</code>): Gaussian identity link.
+<li><strong>Calibration</strong> (<code>gam-calibration-sim</code>; first Gaussian design done above; still to add: wigglier <span class="math inline">\(f\)</span> with binding <span class="math inline">\(k\)</span>, stronger concurvity, and a real-data plasmode): Gaussian identity link.
 <ul>
 <li>Effects: a non-linear smooth, a linear term fitted with <code>s()</code>, a parametric covariate, and a concurvity case.</li>
 <li><span class="math inline">\(n\)</span> from 200 to 20000, <span class="math inline">\(k \in \{10, 20\}\)</span>, 1000 replicates. Include <code>gam</code> (REML) and <code>bam</code> (default, <code>discrete = FALSE</code>).</li>
@@ -3292,8 +3298,8 @@ window.Quarto = {
 <li>Non-Gaussian families (binomial, Poisson) only after the Gaussian case is settled.</li>
 </ol>
 </section>
-<section id="questions-for-review" class="level2" data-number="7">
-<h2 data-number="7" class="anchored" data-anchor-id="questions-for-review"><span class="header-section-number">7</span> Questions for review</h2>
+<section id="questions-for-review" class="level2" data-number="8">
+<h2 data-number="8" class="anchored" data-anchor-id="questions-for-review"><span class="header-section-number">8</span> Questions for review</h2>
 <ol type="1">
 <li><strong>Target:</strong> T1 (basis-free) as the primary target, with T2 reported as a diagnostic? T1 is what users would interpret. T2 is what a fixed-<span class="math inline">\(k\)</span> fit estimates consistently. <em>Decision (SNV, 2026-11-17): T1 primary, T2 as a diagnostic.</em></li>
 <li><strong>df correction:</strong> <code>Ref.df</code> (<code>edf1</code>, which matches mgcv’s null mean), <code>edf</code>, or <span class="math inline">\(k - 1\)</span>? This only matters at <span class="math inline">\(O(1/n)\)</span>, but it is unstable for null-space terms (see the <span class="math inline">\(z\)</span> row above). <em>Decision: <code>Ref.df</code>.</em> Rationale (SNV): the <span class="math inline">\(-\text{df}\)</span> correction is the contribution of the estimator’s variance to <span class="math inline">\(E[T]\)</span>. With <span class="math inline">\(T = \hat p^\top V_r^- \hat p\)</span>, we have <span class="math inline">\(E[T] = p^\top V_r^- p + \operatorname{tr}\{V_r^-\operatorname{Cov}(\hat p)\}\)</span>, so the correct df is <span class="math inline">\(\operatorname{tr}\{V_r^-\operatorname{Cov}(\hat p)\}\)</span>. mgcv chooses <span class="math inline">\(r\)</span> and the fractional-rank weights so that this equals <span class="math inline">\(r =\)</span> <code>Ref.df</code> when <span class="math inline">\(V\)</span> is the covariance of <span class="math inline">\(\hat p\)</span>, which is the null mean noted above. The calibration simulations should check this trace directly, since <code>Vp</code> also contains a bias component, and since <span class="math inline">\(E[\hat p] \ne p\)</span> under penalization.</li>
@@ -3302,8 +3308,8 @@ window.Quarto = {
 <li><strong>Families:</strong> Gaussian first, then binomial/Poisson? <em>Decision: yes.</em></li>
 </ol>
 </section>
-<section id="references" class="level2" data-number="8">
-<h2 data-number="8" class="anchored" data-anchor-id="references"><span class="header-section-number">8</span> References</h2>
+<section id="references" class="level2" data-number="9">
+<h2 data-number="9" class="anchored" data-anchor-id="references"><span class="header-section-number">9</span> References</h2>
 <ul>
 <li>Marra, G. and Wood, S.N. (2012) Coverage properties of confidence intervals for generalized additive model components. <em>Scand. J. Stat.</em> 39, 53–74.</li>
 <li>Nychka, D. (1988) Bayesian confidence intervals for smoothing splines. <em>JASA</em> 83, 1134–1143.</li>

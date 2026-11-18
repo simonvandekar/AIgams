@@ -1503,3 +1503,16 @@ once Goal 2/3/4's asymptotic variance derivations exist.
 - Process mishap: a stale evaluation kept running because the `ps`
   pattern missed `R --file=` workers; it was killed by PID and rerun.
 - RESI test suite: 229 pass.
+
+## Goal 3: gam/bam point-estimate calibration (first Gaussian design)
+- `tests/run_gam_calibration.R`: 500 reps, n in {200, 1000, 5000, 20000},
+  k in {10, 20}, gam/bam, mgcv vs unpenalized; report in
+  `gamCalibrationSim/gam_calibration_report.html`.
+- Null smooth/coefficient rejection 0.03-0.06. mgcv RESI
+  (`f2S(F, Ref.df, rdf, n)`) is consistent for the basis-free target T1:
+  bias -4%/-12% at n = 200, <1% for n >= 5000. It is less biased than the
+  unpenalized fit at small n (an O(p/n) effect; scaling left unchanged).
+- Ref.df under-corrects E[T] under the null by about 0.25 (negligible).
+- `w` SE ratio 0.98-1.05; pointwise Vp SE/RMSE 0.91-1.08.
+- Results summarized in `notes/resi_gam.qmd`. Next: SNV approval for
+  `resi_pe.gam` implementation.

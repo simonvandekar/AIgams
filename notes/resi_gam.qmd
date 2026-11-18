@@ -172,14 +172,40 @@ d. The existing default `resi_pe` path applied to a gam (with `edf` as df),
 For parametric terms, the standard coefficient conversion is used with
 `Vp` (and `Ve` as a check).
 
-## Simulation plan (next todos; not started)
+## First simulation results (Gaussian)
 
-1. **Null check** (`gam-null-check`): $f_j \equiv 0$ for one smooth.
+`tests/run_gam_calibration.R` (report: `gamCalibrationSim/gam_calibration_report.html`)
+combines the null check and the calibration in one design:
+- a non-linear `s(x1)`, a linear effect fitted with `s(x2)` (x1 and x2
+  correlated, $\rho = 0.5$), a null `s(x3)`, and parametric `w` (0.2) and
+  `w0` (null);
+- $n \in \{200, 1000, 5000, 20000\}$, $k \in \{10, 20\}$, 500 replicates;
+- `gam` (REML) and `bam`, penalized (mgcv) and unpenalized (`fx = TRUE`).
+
+Results:
+- **Null:** rejection rates 0.03-0.06 for every engine, $k$ and $n$.
+- **Consistency:** the mgcv RESI (`f2S(F, Ref.df, rdf, n)`) converges to T1.
+  The relative bias is -4% / -12% (`s(x1)` / `s(x2)`) at $n = 200$, -0.7% /
+  -1.9% at $n = 1000$, and below 1% at $n \ge 5000$. It is less biased than
+  the unpenalized reference at small $n$. T1 = T2 in this design.
+- **`Ref.df`:** under the null, $E[T] \approx$ `Ref.df` $+ 0.25$, a bias of
+  $0.25/n$ in $\hat S^2$, which is negligible.
+- **SEs:** `w` SE/MC SD 0.98-1.05. Pointwise `Vp` SE / MC RMSE 0.91-1.08;
+  the lowest is for the linear `s(x2)` at large $n$ (near the penalty null
+  space).
+- The preliminary single-fit impression of a slow negative bias (earlier
+  section) was replicate noise; it is not borne out by the Monte Carlo means.
+
+## Remaining simulation plan
+
+1. **Null check** (`gam-null-check`, done for the Gaussian design above): $f_j \equiv 0$ for one smooth.
    - Compare p-value uniformity for each candidate.
    - Compare the distribution of $\hat S^2$, i.e. the null bias at $S = 0$.
    - Use smooth and linear alternatives for the other terms, $n \in
      \{200, 1000, 5000\}$, REML.
-2. **Calibration** (`gam-calibration-sim`): Gaussian identity link.
+2. **Calibration** (`gam-calibration-sim`; first Gaussian design done above;
+   still to add: wigglier $f$ with binding $k$, stronger concurvity, and a
+   real-data plasmode): Gaussian identity link.
    - Effects: a non-linear smooth, a linear term fitted with `s()`, a
      parametric covariate, and a concurvity case.
    - $n$ from 200 to 20000, $k \in \{10, 20\}$, 1000 replicates. Include
