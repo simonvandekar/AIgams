@@ -1,0 +1,399 @@
+ℹ Loading RESI
+Registered S3 method overwritten by 'clubSandwich':
+  method    from    
+  bread.mlm sandwich
+Registered S3 method overwritten by 'lme4':
+  method           from
+  na.action.merMod car 
+Finished cell 1/12: n_schools = 15, n_per_site = 25 (1000 successful fits)
+Finished cell 2/12: n_schools = 30, n_per_site = 25 (1000 successful fits)
+Finished cell 3/12: n_schools = 60, n_per_site = 25 (1000 successful fits)
+Finished cell 4/12: n_schools = 100, n_per_site = 25 (1000 successful fits)
+Finished cell 5/12: n_schools = 15, n_per_site = 100 (1000 successful fits)
+Finished cell 6/12: n_schools = 30, n_per_site = 100 (1000 successful fits)
+Finished cell 7/12: n_schools = 60, n_per_site = 100 (1000 successful fits)
+Finished cell 8/12: n_schools = 100, n_per_site = 100 (1000 successful fits)
+Finished cell 9/12: n_schools = 15, n_per_site = 200 (1000 successful fits)
+Finished cell 10/12: n_schools = 30, n_per_site = 200 (1000 successful fits)
+Finished cell 11/12: n_schools = 60, n_per_site = 200 (1000 successful fits)
+Finished cell 12/12: n_schools = 100, n_per_site = 200 (1000 successful fits)
+
+=== Fixed effects: mean model SE / MC SD ===
+, , n_per_site = 25
+
+                  n_schools
+param                 15    30    60   100
+  beta_(Intercept) 0.972 0.972 1.012 0.991
+  beta_black1      0.963 0.948 0.996 0.990
+  beta_femaleMale  1.035 1.026 0.991 0.992
+  beta_hispanic1   0.951 1.000 1.002 0.974
+  beta_lowinc_10   0.971 0.992 1.007 0.975
+  beta_size_100    0.916 0.978 0.981 0.948
+  beta_year        1.009 0.997 1.040 0.956
+
+, , n_per_site = 100
+
+                  n_schools
+param                 15    30    60   100
+  beta_(Intercept) 0.960 0.987 1.013 1.031
+  beta_black1      0.997 1.007 0.986 1.018
+  beta_femaleMale  1.002 0.979 0.998 0.983
+  beta_hispanic1   0.955 0.978 0.963 1.003
+  beta_lowinc_10   0.960 1.008 1.012 1.025
+  beta_size_100    0.940 0.962 0.965 1.033
+  beta_year        0.982 1.006 0.971 0.998
+
+, , n_per_site = 200
+
+                  n_schools
+param                 15    30    60   100
+  beta_(Intercept) 0.922 0.940 0.999 1.019
+  beta_black1      0.984 0.978 0.994 1.021
+  beta_femaleMale  0.973 1.014 0.968 0.996
+  beta_hispanic1   0.975 0.959 0.963 0.981
+  beta_lowinc_10   0.954 0.978 1.031 1.005
+  beta_size_100    0.939 0.979 0.992 1.009
+  beta_year        1.024 0.968 1.005 0.985
+
+
+=== Variance components: relative bias (%) ===
+, , n_per_site = 25
+
+                                  n_schools
+param                                   15      30      60     100
+  var_childid:schoolid_(Intercept) -0.4310  0.0370  0.0516  0.0775
+  var_Residual                     -0.0668  0.0224  0.0431 -0.0123
+  var_schoolid_(Intercept)          0.0741 -0.4890  0.2399 -0.1543
+
+, , n_per_site = 100
+
+                                  n_schools
+param                                   15      30      60     100
+  var_childid:schoolid_(Intercept)  0.2126 -0.0249  0.0548  0.0112
+  var_Residual                     -0.0763  0.0267 -0.0146 -0.0251
+  var_schoolid_(Intercept)         -2.0898 -0.2509 -0.0233  0.6061
+
+, , n_per_site = 200
+
+                                  n_schools
+param                                   15      30      60     100
+  var_childid:schoolid_(Intercept)  0.0421 -0.0274  0.0173  0.0465
+  var_Residual                     -0.0543 -0.0515 -0.0127  0.0204
+  var_schoolid_(Intercept)         -0.0821  1.2431  0.4356  0.1659
+
+
+=== RESI: Lyu limit vs Monte Carlo mean ===
+ n_schools n_per_site        table        term     n truth_resi mc_mean_resi
+        15         25 coefficients (Intercept)    15    0.26838     0.215363
+        15         25 coefficients        year   378    3.33356     3.331977
+        15         25 coefficients  femaleMale   378   -0.00163    -0.000422
+        15         25 coefficients      black1   378   -0.13995    -0.153846
+        15         25 coefficients   hispanic1   378   -0.07517    -0.074277
+        15         25 coefficients    size_100    15   -0.11929    -0.103440
+        15         25 coefficients   lowinc_10    15   -0.74935    -0.563239
+        15         25        anova        year   378    3.33356     3.331569
+        15         25        anova      female   378    0.00163     0.015996
+        15         25        anova       black   378    0.13995     0.142569
+        15         25        anova    hispanic   378    0.07517     0.057873
+        15         25        anova    size_100    15    0.11929     0.131292
+        15         25        anova   lowinc_10    15    0.74935     0.487704
+        30         25 coefficients (Intercept)    30    0.26838     0.205797
+        30         25 coefficients        year   759    3.33356     3.336277
+        30         25 coefficients  femaleMale   759   -0.00163    -0.002293
+        30         25 coefficients      black1   759   -0.13995    -0.152734
+        30         25 coefficients   hispanic1   759   -0.07517    -0.076482
+        30         25 coefficients    size_100    30   -0.11929    -0.091490
+        30         25 coefficients   lowinc_10    30   -0.74935    -0.561517
+        30         25        anova        year   759    3.33356     3.336077
+        30         25        anova      female   759    0.00163     0.011756
+        30         25        anova       black   759    0.13995     0.147809
+        30         25        anova    hispanic   759    0.07517     0.065561
+        30         25        anova    size_100    30    0.11929     0.087185
+        30         25        anova   lowinc_10    30    0.74935     0.523776
+        60         25 coefficients (Intercept)    60    0.26838     0.214712
+        60         25 coefficients        year  1503    3.33356     3.335534
+        60         25 coefficients  femaleMale  1503   -0.00163    -0.001973
+        60         25 coefficients      black1  1503   -0.13995    -0.153964
+        60         25 coefficients   hispanic1  1503   -0.07517    -0.077115
+        60         25 coefficients    size_100    60   -0.11929    -0.102571
+        60         25 coefficients   lowinc_10    60   -0.74935    -0.567980
+        60         25        anova        year  1503    3.33356     3.335433
+        60         25        anova      female  1503    0.00163     0.009048
+        60         25        anova       black  1503    0.13995     0.151688
+        60         25        anova    hispanic  1503    0.07517     0.071745
+        60         25        anova    size_100    60    0.11929     0.079659
+        60         25        anova   lowinc_10    60    0.74935     0.551588
+       100         25 coefficients (Intercept)   100    0.26838     0.209075
+       100         25 coefficients        year  2505    3.33356     3.334181
+       100         25 coefficients  femaleMale  2505   -0.00163    -0.001493
+       100         25 coefficients      black1  2505   -0.13995    -0.154192
+       100         25 coefficients   hispanic1  2505   -0.07517    -0.077061
+       100         25 coefficients    size_100   100   -0.11929    -0.093377
+       100         25 coefficients   lowinc_10   100   -0.74935    -0.569213
+       100         25        anova        year  2505    3.33356     3.334121
+       100         25        anova      female  2505    0.00163     0.007335
+       100         25        anova       black  2505    0.13995     0.152857
+       100         25        anova    hispanic  2505    0.07517     0.074097
+       100         25        anova    size_100   100    0.11929     0.072064
+       100         25        anova   lowinc_10   100    0.74935     0.559922
+        15        100 coefficients (Intercept)    15    0.26838     0.229091
+        15        100 coefficients        year  1502    3.33356     3.329631
+        15        100 coefficients  femaleMale  1502   -0.00163    -0.000670
+        15        100 coefficients      black1  1502   -0.13995    -0.142975
+        15        100 coefficients   hispanic1  1502   -0.07517    -0.075254
+        15        100 coefficients    size_100    15   -0.11929    -0.093076
+        15        100 coefficients   lowinc_10    15   -0.74935    -0.671115
+        15        100        anova        year  1502    3.33356     3.329528
+        15        100        anova      female  1502    0.00163     0.008939
+        15        100        anova       black  1502    0.13995     0.140372
+        15        100        anova    hispanic  1502    0.07517     0.069532
+        15        100        anova    size_100    15    0.11929     0.119683
+        15        100        anova   lowinc_10    15    0.74935     0.605562
+        30        100 coefficients (Intercept)    30    0.26838     0.245462
+        30        100 coefficients        year  3004    3.33356     3.334766
+        30        100 coefficients  femaleMale  3004   -0.00163    -0.001379
+        30        100 coefficients      black1  3004   -0.13995    -0.144075
+        30        100 coefficients   hispanic1  3004   -0.07517    -0.075787
+        30        100 coefficients    size_100    30   -0.11929    -0.112580
+        30        100 coefficients   lowinc_10    30   -0.74935    -0.670838
+        30        100        anova        year  3004    3.33356     3.334716
+        30        100        anova      female  3004    0.00163     0.006540
+        30        100        anova       black  3004    0.13995     0.142867
+        30        100        anova    hispanic  3004    0.07517     0.073277
+        30        100        anova    size_100    30    0.11929     0.096963
+        30        100        anova   lowinc_10    30    0.74935     0.641261
+        60        100 coefficients (Intercept)    60    0.26838     0.256879
+        60        100 coefficients        year  5997    3.33356     3.330775
+        60        100 coefficients  femaleMale  5997   -0.00163    -0.001883
+        60        100 coefficients      black1  5997   -0.13995    -0.144732
+        60        100 coefficients   hispanic1  5997   -0.07517    -0.075911
+        60        100 coefficients    size_100    60   -0.11929    -0.110676
+        60        100 coefficients   lowinc_10    60   -0.74935    -0.690423
+        60        100        anova        year  5997    3.33356     3.330750
+        60        100        anova      female  5997    0.00163     0.004516
+        60        100        anova       black  5997    0.13995     0.144143
+        60        100        anova    hispanic  5997    0.07517     0.074751
+        60        100        anova    size_100    60    0.11929     0.086562
+        60        100        anova   lowinc_10    60    0.74935     0.677511
+       100        100 coefficients (Intercept)   100    0.26838     0.245039
+       100        100 coefficients        year  9988    3.33356     3.334054
+       100        100 coefficients  femaleMale  9988   -0.00163    -0.001495
+       100        100 coefficients      black1  9988   -0.13995    -0.145479
+       100        100 coefficients   hispanic1  9988   -0.07517    -0.075932
+       100        100 coefficients    size_100   100   -0.11929    -0.113001
+       100        100 coefficients   lowinc_10   100   -0.74935    -0.682130
+       100        100        anova        year  9988    3.33356     3.334039
+       100        100        anova      female  9988    0.00163     0.003587
+       100        100        anova       black  9988    0.13995     0.145130
+       100        100        anova    hispanic  9988    0.07517     0.075252
+       100        100        anova    size_100   100    0.11929     0.083380
+       100        100        anova   lowinc_10   100    0.74935     0.674497
+        15        200 coefficients (Intercept)    15    0.26838     0.248429
+        15        200 coefficients        year  2998    3.33356     3.327279
+        15        200 coefficients  femaleMale  2998   -0.00163    -0.002294
+        15        200 coefficients      black1  2998   -0.13995    -0.140426
+        15        200 coefficients   hispanic1  2998   -0.07517    -0.074235
+        15        200 coefficients    size_100    15   -0.11929    -0.099399
+        15        200 coefficients   lowinc_10    15   -0.74935    -0.708206
+        15        200        anova        year  2998    3.33356     3.327228
+        15        200        anova      female  2998    0.00163     0.006750
+        15        200        anova       black  2998    0.13995     0.139144
+        15        200        anova    hispanic  2998    0.07517     0.071599
+        15        200        anova    size_100    15    0.11929     0.121983
+        15        200        anova   lowinc_10    15    0.74935     0.645565
+        30        200 coefficients (Intercept)    30    0.26838     0.256558
+        30        200 coefficients        year  6008    3.33356     3.331830
+        30        200 coefficients  femaleMale  6008   -0.00163    -0.001603
+        30        200 coefficients      black1  6008   -0.13995    -0.141330
+        30        200 coefficients   hispanic1  6008   -0.07517    -0.074561
+        30        200 coefficients    size_100    30   -0.11929    -0.114457
+        30        200 coefficients   lowinc_10    30   -0.74935    -0.712953
+        30        200        anova        year  6008    3.33356     3.331804
+        30        200        anova      female  6008    0.00163     0.004277
+        30        200        anova       black  6008    0.13995     0.140720
+        30        200        anova    hispanic  6008    0.07517     0.073355
+        30        200        anova    size_100    30    0.11929     0.095114
+        30        200        anova   lowinc_10    30    0.74935     0.684897
+        60        200 coefficients (Intercept)    60    0.26838     0.256249
+        60        200 coefficients        year 11994    3.33356     3.330915
+        60        200 coefficients  femaleMale 11994   -0.00163    -0.001616
+        60        200 coefficients      black1 11994   -0.13995    -0.142334
+        60        200 coefficients   hispanic1 11994   -0.07517    -0.075548
+        60        200 coefficients    size_100    60   -0.11929    -0.114383
+        60        200 coefficients   lowinc_10    60   -0.74935    -0.714870
+        60        200        anova        year 11994    3.33356     3.330902
+        60        200        anova      female 11994    0.00163     0.003496
+        60        200        anova       black 11994    0.13995     0.142036
+        60        200        anova    hispanic 11994    0.07517     0.074979
+        60        200        anova    size_100    60    0.11929     0.085181
+        60        200        anova   lowinc_10    60    0.74935     0.702417
+       100        200 coefficients (Intercept)   100    0.26838     0.260743
+       100        200 coefficients        year 20028    3.33356     3.332923
+       100        200 coefficients  femaleMale 20028   -0.00163    -0.001797
+       100        200 coefficients      black1 20028   -0.13995    -0.141906
+       100        200 coefficients   hispanic1 20028   -0.07517    -0.075304
+       100        200 coefficients    size_100   100   -0.11929    -0.115094
+       100        200 coefficients   lowinc_10   100   -0.74935    -0.714553
+       100        200        anova        year 20028    3.33356     3.332915
+       100        200        anova      female 20028    0.00163     0.002650
+       100        200        anova       black 20028    0.13995     0.141729
+       100        200        anova    hispanic 20028    0.07517     0.074966
+       100        200        anova    size_100   100    0.11929     0.083534
+       100        200        anova   lowinc_10   100    0.74935     0.707280
+ mc_sd_resi
+    0.27968
+    0.12475
+    0.05015
+    0.06136
+    0.05650
+    0.30054
+    0.32919
+    0.12477
+    0.03081
+    0.06679
+    0.05720
+    0.21339
+    0.35660
+    0.18853
+    0.08670
+    0.03561
+    0.04187
+    0.03750
+    0.19141
+    0.21224
+    0.08670
+    0.02125
+    0.04359
+    0.04163
+    0.13546
+    0.23056
+    0.13244
+    0.06092
+    0.02608
+    0.02890
+    0.02682
+    0.13249
+    0.15489
+    0.06092
+    0.01575
+    0.02934
+    0.02927
+    0.10543
+    0.16027
+    0.10331
+    0.04904
+    0.02017
+    0.02312
+    0.02117
+    0.10619
+    0.11804
+    0.04905
+    0.01195
+    0.02332
+    0.02227
+    0.09024
+    0.12010
+    0.27162
+    0.09467
+    0.02604
+    0.03659
+    0.03002
+    0.28435
+    0.33180
+    0.09468
+    0.01572
+    0.03732
+    0.03259
+    0.19532
+    0.36076
+    0.19450
+    0.06515
+    0.01873
+    0.02536
+    0.02106
+    0.19301
+    0.22454
+    0.06515
+    0.01150
+    0.02555
+    0.02192
+    0.14292
+    0.23658
+    0.13080
+    0.04777
+    0.01297
+    0.01750
+    0.01481
+    0.13475
+    0.15694
+    0.04777
+    0.00807
+    0.01756
+    0.01505
+    0.11016
+    0.16008
+    0.09965
+    0.03455
+    0.01020
+    0.01357
+    0.01135
+    0.09905
+    0.12260
+    0.03455
+    0.00636
+    0.01360
+    0.01145
+    0.09190
+    0.12404
+    0.29640
+    0.08903
+    0.01894
+    0.03090
+    0.02290
+    0.28505
+    0.35042
+    0.08904
+    0.01167
+    0.03117
+    0.02383
+    0.19644
+    0.37994
+    0.20157
+    0.06083
+    0.01279
+    0.02236
+    0.01669
+    0.18917
+    0.23742
+    0.06083
+    0.00792
+    0.02245
+    0.01698
+    0.14149
+    0.24966
+    0.13414
+    0.04206
+    0.00946
+    0.01542
+    0.01125
+    0.13117
+    0.15702
+    0.04206
+    0.00587
+    0.01545
+    0.01132
+    0.11161
+    0.16012
+    0.10057
+    0.03293
+    0.00710
+    0.01180
+    0.00904
+    0.10041
+    0.12585
+    0.03293
+    0.00444
+    0.01181
+    0.00908
+    0.09588
+    0.12719

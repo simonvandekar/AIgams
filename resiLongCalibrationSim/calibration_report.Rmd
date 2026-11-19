@@ -12,28 +12,61 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+options(knitr.kable.NA = "")
 library(knitr)
 
-egsingle <- local({
-  e <- new.env()
-  utils::data("egsingle", package = "mlmRev", envir = e)
-  e$egsingle
-})
+# RESI and SE targets: Lyu & Welsh (2022) g, m -> Inf limit evaluated at the
+# full-data ML parameter estimates (RESI/R/mixed_simulations.R); the
+# simulation stores these as truth_resi and truth_se_scaled. The full-data
+# resi_pe value (observed design, m ~ 29) and the exact finite-m
+# expected-design value are added for comparison.
+suppressMessages(devtools::load_all("../RESI", quiet = TRUE))
+source("../tests/egsingle_models.R")  # egsingle_models$A, $B (overwrites egsingle with rescaled covariates)
+source("../tests/mixed_ci_coverage_lib.R")  # summarize_coverage()
 
-real_summary  <- readRDS("summary_table.rds")
-synth_summary <- readRDS("../tests/synthetic_calibration_summary.rds")
+load_calibration <- function(model) {
+  sfx <- if (model == "A") "" else paste0("_", model)
+  summ <- readRDS(paste0("hybrid_plasmode", sfx, "_summary.rds"))
+  resi <- readRDS(paste0("hybrid_plasmode", sfx, "_resi_summary.rds"))
+  fit <- lme4::lmer(egsingle_models[[model]], data = egsingle, REML = FALSE,
+                    control = lme4::lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5)))
+  full <- suppressMessages(resi_pe(fit, anova = TRUE, vcovfunc = stats::vcov, level = 2))
+  expected_m <- lapply(setNames(nm = sort(unique(resi$n_per_site))),
+                       function(m) expectedDesignResi(fit, m))
+  resi$truth_resi_full_data <- mapply(function(tab, term) full[[tab]][term, "RESI"],
+                                      resi$table, resi$term)
+  resi$expected_resi_m <- mapply(function(tab, term, m) {
+    expected_m[[as.character(m)]][[tab]][term, "RESI"]
+  }, resi$table, resi$term, resi$n_per_site)
+  list(model = model, summary = summ, resi_summary = resi, fit = fit,
+       design_avg_file = paste0("design_averaged_se", sfx, ".rds"))
+}
+cal_A <- load_calibration("A")
+hybrid_fixedn_summary <- cal_A$summary
+hybrid_fixedn_resi_summary <- cal_A$resi_summary
+truth_fit_A <- cal_A$fit
 ```
 
 # Purpose
 
 This report documents Goal 5a of the RESI mixed-model extension project (see
-`instructions/instructions.md` and `log/claudeLog.md` at the repository root):
-a calibration check of the plasmode simulation machinery for `lme4::lmer`
-before any RESI confidence-interval theory is layered on top. It collects, in
-one place: the dataset used, the exact simulation settings, the full-scale
-calibration results, and a follow-up diagnostic simulation that tests a
-hypothesis about the source of a fixed-effect SE mis-calibration found in the
-full-scale run.
+`instructions/instructions.md` at the repository root): a calibration check
+of the mixed-model RESI point estimator and of the fixed-effect standard
+errors for `lme4::lmer`, using a **hybrid plasmode simulation** built on
+`mlmRev::egsingle`. The simulation is implemented by
+`RESI::hybridPlasmodeSim()` (`RESI/R/mixed_simulations.R`) and run by
+`tests/run_hybrid_plasmode.R`.
+
+**Why not resample the real outcomes?** An earlier full two-stage bootstrap
+of the real data (schools, then children, with replacement, keeping the
+observed outcomes) gave model-based fixed-effect SEs that stayed well below
+the Monte Carlo SD for child- and occasion-level covariates, and a growing
+bias in the school variance. Simon's hypothesis is that real slope
+heterogeneity across schools and children, which Model A does not include,
+inflates the true sampling variability when real outcomes are resampled.
+Consistent with this, outcomes generated from the fitted Model A were
+correctly calibrated. The hybrid plasmode therefore resamples the covariate
+design hierarchically but generates new outcomes from the fitted model.
 
 # Dataset: `mlmRev::egsingle`
 
@@ -118,186 +151,692 @@ directly interpretable:
 - `lowinc_10 = lowinc / 10` (percent low-income in units of 10 percentage points)
 
 Combined with `lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5))`,
-both models below fit with 0 convergence warnings on the full data.
+Model A fits with 0 convergence warnings on the full data.
 
-## Models A and B
+## Model A
 
-Shared fixed effects:
-`math ~ year + female + black + hispanic + size_100 + lowinc_10`
+`math ~ year + female + black + hispanic + size_100 + lowinc_10 + (1 | schoolid/childid)`
 
-- **Model A** (random intercepts only):
-  `+ (1 | schoolid/childid)`
-- **Model B** (random slope for `year` at the child level):
-  `+ (1 + year | childid) + (1 | schoolid)`
+The full-sample Model A fit uses ML (`REML = FALSE`) and supplies the plug-in
+generating parameters and full-sample reference. Each simulated Model A fit
+uses REML (`REML = TRUE`). Thus the replicate estimator is REML while the
+full-sample target/generating fit is ML; interpret finite-sample differences
+with that distinction in mind.
 
-All models are fit with `REML = FALSE` (maximum likelihood), since the
-full-data fit's fixed effects and variance components are used as the
-"truth"/population target that each replicate is compared against (the same
-convention `insurancePlasmodeSim()`/`simCalibrationSim()` use for `lm`/`glm`).
+Random-effect (variance component) standard errors are **not** computed; only fixed-effect model-based SEs are
+compared against the Monte Carlo SD of each fixed effect across replicates.
+Variance-component point estimates are still tracked for bias.
 
-## Two-stage hierarchical plasmode resampling
-
-Because the design is genuinely 3-level and nested (not crossed), each
-replicate is resampled in two stages, implemented in
-`RESI/R/simulations.R` (`.longSimBuildIndex()` / `.longSimResampleHierarchical()`):
-
-1. Draw `n_schools` schools **with replacement** from the 60 real schools.
-2. Within each drawn school, draw (with replacement) as many children as
-   that *source* school originally had, keeping each child's full row set
-   (all measurement occasions) intact.
-3. Re-key `schoolid`/`childid` so repeated draws of the same school/child are
-   treated as distinct clusters by `lmer`.
-
-This is the standard "cases" cluster bootstrap for nested multilevel data.
-
-## Settings used for the full-scale run
-
-```{r settings-table}
-settings_tab <- data.frame(
-  Setting = c("nsim", "n_schools.vec", "model", "mc.cores.reps",
-              "mc.cores.settings", "Estimation"),
-  Value = c("1000", "c(15, 30, 60, 90, 120)", "both (A and B)", "24",
-            "1 (sequential over the 10 model x n_schools cells)",
-            "REML = FALSE, lmerControl(optimizer = \"bobyqa\", optCtrl = list(maxfun = 2e5))")
-)
-kable(settings_tab, caption = "longitudinalCalibrationSim() production settings (main.R)")
-```
-
-Random-effect (variance component) standard errors are **not** computed;
-only fixed-effect model-based SEs are compared against the Monte Carlo SD of
-each fixed effect across replicates. Variance-component point estimates are
-still tracked for bias.
-
-# Full-scale calibration results (real data)
-
-Ran on 2026-09-05: 1000/1000 successful fits in every one of the 10
-(model x `n_schools`) cells, 0 convergence failures.
-
-## Fixed-effect bias and SE calibration
-
-Bias (`truth - mc_mean`) shrinks toward 0 for every fixed effect in both
-models as `n_schools` grows, as expected. SE calibration
-(`mean_model_se / mc_sd`, target 1) shows a **two-tier pattern**:
-
-```{r se-ratio-table}
-fe <- real_summary[grepl("^beta_", real_summary$param), ]
-wide <- reshape(fe[, c("model", "param", "n_schools", "se_ratio")],
-                 idvar = c("model", "param"), timevar = "n_schools", direction = "wide")
-wide <- wide[order(wide$model, wide$param), ]
-kable(wide, digits = 3, row.names = FALSE,
-      caption = "mean_model_se / mc_sd by fixed effect, model, and n_schools (target = 1)")
-```
-
-- **School-level covariates** (`size_100`, `lowinc_10`) and the intercept
-  converge to ~1.0 by `n_schools = 60`.
-- **Child-level, time-invariant covariates** (`female`, `black`, `hispanic`)
-  plateau around **0.7** and never approach 1, regardless of `n_schools`.
-- **The occasion-level covariate `year`** plateaus around **0.3-0.4**, in
-  *both* Model A and Model B, even though Model B has a random slope for
-  `year`.
-
-```{r fig-model-a, fig.cap="Model A: fixed-effect bias, SE calibration, and variance-component bias vs. n_schools."}
-knitr::include_graphics("figures/longitudinal_calibration_A.png")
-```
-
-```{r fig-model-b, fig.cap="Model B: fixed-effect bias, SE calibration, and variance-component bias vs. n_schools."}
-knitr::include_graphics("figures/longitudinal_calibration_B.png")
-```
-
-## Variance components
-
-```{r vc-bias-table}
-vc <- real_summary[!grepl("^beta_", real_summary$param), ]
-vc$rel_bias_pct <- 100 * vc$bias / vc$truth
-widevc <- reshape(vc[, c("model", "param", "n_schools", "rel_bias_pct")],
-                    idvar = c("model", "param"), timevar = "n_schools", direction = "wide")
-widevc <- widevc[order(widevc$model, widevc$param), ]
-kable(widevc, digits = 2, row.names = FALSE,
-      caption = "Variance/covariance component relative bias (%) by n_schools")
-```
-
-`var_Residual`, the child-level variance/covariance, and (in Model B)
-`var_childid_year` are all well calibrated (relative bias magnitude <=~5% at
-`n_schools = 120`). **`var_schoolid_(Intercept)` (the between-school
-variance) is the exception**: relative bias grows from about -1% at
-`n_schools = 15, 30` out to **-28% to -35%** at `n_schools = 60, 90, 120` --
-i.e. the Monte Carlo mean increasingly *overestimates* the full-data
-between-school variance once `n_schools` approaches/exceeds the real pool of
-60 schools.
-
-# Slope-heterogeneity diagnostic (synthetic DGP)
+# Hybrid plasmode (hierarchical covariate and BLUP resampling)
 
 ## Motivation and method
 
-**Hypothesis:** minor real variation in schools' *own* coefficients for
-covariates other than the intercept (which Model A cannot model, since it
-only has random intercepts) is being absorbed into the fixed-effect sampling
-variability, causing the SE mis-calibration above.
+This hybrid plasmode resamples the covariate design hierarchically from the
+real data, then generates fresh random effects and residuals from the fitted
+Model A generator. This retains the empirical joint covariate distribution
+across schools and students without carrying over the real outcomes.
 
-**Test:** a synthetic version of `egsingle` was built
-(`tests/test_egsingle_synthetic_calibration.R`) in which `math` is simulated
-from Model A's own full-data fitted parameters via
-`simulate.merMod(use.u = FALSE)`. By construction, every school/child shares
-the *exact same* fixed slope for every covariate -- only random intercepts
-vary (drawn fresh from the estimated variance components), plus fresh iid
-residual noise. The same two-stage resampling + refit pipeline (`nsim =
-1000`, same `n_schools.vec`, Model A only) was then rerun on this synthetic
-data.
+For each replicate, draw `n_schools` source schools with replacement from
+the 60 observed schools. Within each selected source school, draw students
+with replacement. If source school $i$ contains $m_i$ observed students,
+draw approximately $n_{per\_site} m_i / \bar m$ students, where $\bar m$ is
+the average observed school size. Thus expected sample size is proportional
+to source-school size and the average number drawn per generated school is
+approximately `n_per_site`; rounding makes the realized total vary slightly.
+Each selected student contributes all of their observed measurement rows.
+Every school and student draw receives a new ID, even when the same source
+school or student is selected more than once. This sampling is with
+replacement and occurs anew for every replicate.
+
+Raw BLUPs are shrunk toward zero relative to the true random-effect
+variance (a well-known property of best linear unbiased prediction), so
+each BLUP pool is first centered to exactly mean zero and then rescaled so
+its variance equals the corresponding fitted variance component before any
+resampling:
+$$b^*_i = (b_i - \bar b) \times \sqrt{\hat\sigma^2 \Big/ \tfrac{1}{G}\textstyle\sum_i (b_i - \bar b)^2}$$
+The $1/G$ (population) variance is used because generated units draw with
+replacement from the pool, so the variance of a draw is exactly
+$\hat\sigma^2$. (An earlier version used the $1/(G-1)$ sample variance,
+which built a $(G-1)/G$ shrinkage, $-1.67\%$ for the 60 school BLUPs, into
+`var_schoolid`.)
+For Model A fit to the real data: the 60 school BLUPs have raw variance
+0.056 (fitted `var_schoolid` = 0.079, so rescale factor $\approx 1.19$); the
+1721 child BLUPs have raw variance 0.562 (fitted
+`var_childid:schoolid` = 0.652, rescale factor $\approx 1.08$). The full-data
+Model A fit remains ML (`REML = FALSE`) and supplies the plug-in DGP fixed
+effects and variance components. School and student BLUP pools are centered
+and rescaled to their fitted variances; each generated school and student
+receives an independent draw with replacement from its corresponding pool.
+Fresh residuals are drawn from the fitted Normal residual distribution.
+Each simulated dataset is refit using REML (`REML = TRUE`); the coefficient
+and RESI standard errors are model-based, from `stats::vcov`.
+
+The reported grid is `n_schools in {15,30,60,100}` crossed with
+`n_per_site in {25,100,200}`. The 200-school and 50-student/site conditions
+are excluded. The simulation sets `set.seed(2026)` once before iterating over
+grid cells. `mclapply` uses L'Ecuyer-CMRG worker streams with
+`mc.set.seed = TRUE` for covariate resampling, BLUP resampling, and residual
+draws.
 
 ## Results
 
-```{r synth-comparison-table}
-real_a <- real_summary[real_summary$model == "A" & grepl("^beta_", real_summary$param),
-                        c("param", "n_schools", "se_ratio")]
-names(real_a)[3] <- "se_ratio_real"
-synth_fe <- synth_summary[grepl("^beta_", synth_summary$param),
-                           c("param", "n_schools", "se_ratio")]
-names(synth_fe)[3] <- "se_ratio_synth"
-cmp <- merge(real_a, synth_fe, by = c("param", "n_schools"))
-cmp <- cmp[order(cmp$param, cmp$n_schools), ]
-kable(cmp, digits = 3, row.names = FALSE,
-      caption = "se_ratio: real data vs. synthetic (zero true slope heterogeneity), Model A")
+Blank entries in the wide tables indicate conditions that were not simulated.
+The RESI table reports the mean and SD of the realized student count across
+replicates (`n` and `n_sd`), since proportional cluster-size sampling does
+not yield exactly `n_schools * n_per_site` students in every replicate.
+For the third plot row, the intercept and school-level predictors use
+`n_schools`; student-level and time-varying predictors use the planned
+student count `n_schools * n_per_site`. The realized student count and its SD
+are reported separately. This follows the between-school versus within-school scaling
+principle of Lyu and Welsh, treating repeated observations per student as
+bounded for this comparison. The reference is the Lyu and Welsh (2022)
+$g, m \to \infty$ per-unit SE, $\sqrt{n_k \mathrm{Var}(\hat\beta_k)}$,
+evaluated at the full-data ML parameter estimates (`truth_se_scaled`; see the
+RESI section for the formulas). It is fixed across designs. Each cell's
+Monte Carlo SD of coefficient error is scaled by the square root of its
+planned count (`n_schools` for school-level terms; `n_schools * n_per_site`
+for student/time terms), then divided by that reference. The ratio should
+approach 1 as both `n_schools` and `n_per_site` grow. At finite `n_per_site`,
+school-level terms sit above 1, since their per-school variance is
+$\tau^2_{school} + \sigma^2_w/m$ rather than $\tau^2_{school}$. Partly
+clustered student terms (`black`, `hispanic`) sit slightly below 1, because
+they still borrow between-school information. The earlier full-sample ML SE
+reference corresponded to the observed $m \approx 29$ and therefore drifted
+with `n_per_site`. Dashed curves show these ratios; the solid horizontal
+reference is 1.
+
+The short translucent ticks in that row are the finite-sample reference for
+each cell. Each replicate redraws `n_schools` school profiles, so the Monte
+Carlo variance of $\hat\beta$ is
+$E_X[\mathrm{Var}(\hat\beta \mid X)] + \mathrm{Var}_X(E[\hat\beta \mid X])$,
+and the second term is about zero because $\hat\beta$ is conditionally
+unbiased. The reference is therefore $\sqrt{n_k E_X[V(X)]_{kk}}$, where
+$V(X)$ is the GLS covariance of a resampled design at the full-data
+variance components, averaged over 2000 resampled school sets per cell
+(`designAveragedSe()` in `RESI/R/mixed_simulations.R`; cached in
+`design_averaged_se.rds`). It exceeds the SE of the expected design,
+$\sqrt{n_k [E_X I(X)]^{-1}_{kk}}$, because $E[I^{-1}] \ge E[I]^{-1}$. The
+gap is largest at small `n_schools` and for covariates concentrated in a few
+schools (e.g. `hispanic`: 28 of 60 schools have no Hispanic students), and
+it vanishes as `n_schools` grows. This reference applies to the spread of
+$\hat\beta$ only. RESI divides by each dataset's own SE, so its
+fixed-$m$ reference in the RESI rows remains the expected-design value
+$S_m$.
+
+```{r hybrid-fixedn-se-table}
+fe2 <- hybrid_fixedn_summary[grepl("^beta_", hybrid_fixedn_summary$param), ]
+wide2 <- reshape(fe2[, c("param", "n_schools", "n_per_site", "se_ratio")],
+                 idvar = c("param", "n_schools"), timevar = "n_per_site", direction = "wide")
+wide2 <- wide2[order(wide2$param, wide2$n_schools), ]
+kable(wide2, digits = 3, row.names = FALSE,
+      caption = "mean_model_se / mc_sd by fixed effect, n_schools, and n_per_site (hybrid plasmode, Model A)")
 ```
 
-```{r fig-synth, fig.cap="Model A refit on the synthetic (zero true slope heterogeneity) dataset: fixed-effect bias, SE calibration, and variance-component bias vs. n_schools."}
-knitr::include_graphics("synthetic_diagnostic/figures/longitudinal_calibration_A_synth.png")
+```{r hybrid-fixedn-beta-table}
+kable(fe2[, c("n_schools", "n_per_site", "param", "truth", "mc_mean",
+             "bias", "mc_sd", "mean_model_se", "se_n_level", "n_scaling",
+             "truth_se_scaled", "mc_error_sd_scaled",
+             "scaled_mc_error_sd_ratio", "n_success")],
+      digits = 4, row.names = FALSE,
+      caption = "Fixed-effect Monte Carlo estimates, bias, and scaled standard-error diagnostics")
+```
+
+```{r hybrid-fixedn-vc-table}
+vc3 <- hybrid_fixedn_summary[!grepl("^beta_", hybrid_fixedn_summary$param), ]
+vc3$rel_bias_pct <- 100 * vc3$bias / vc3$truth
+widevc3 <- reshape(vc3[, c("param", "n_schools", "n_per_site", "rel_bias_pct")],
+                    idvar = c("param", "n_schools"), timevar = "n_per_site", direction = "wide")
+widevc3 <- widevc3[order(widevc3$param, widevc3$n_schools), ]
+kable(widevc3, digits = 2, row.names = FALSE,
+      caption = "Variance-component relative bias (%) by n_schools and n_per_site (hybrid plasmode, Model A)")
+```
+
+```{r fig-hybrid-fixedn, fig.width=15, fig.height=18, fig.cap="Joint hybrid plasmode calibration across n_schools and n_per_site. Left column: between-school terms (intercept, size_100, lowinc_10, school variance); middle column: terms that vary within school (year, female, black, hispanic, child and residual variances). The x-axis is the planned total student count n_schools x n_per_site (log scale). Solid lines connect n_per_site values at fixed n_schools; dotted lines connect n_schools values at fixed n_per_site; point shape marks n_schools; color marks the term and is shared across rows. Rows: fixed-effect SE ratio, variance-component relative bias, scaled Monte Carlo coefficient-error SD / Lyu-Welsh limiting per-unit SE (solid line at 1 = large-m truth; short translucent ticks = the design-averaged per-unit SE at that n_schools x n_per_site cell divided by the limiting SE, the finite-sample reference for the Monte Carlo SD), and RESI coefficient and ANOVA-term point estimates. In the RESI rows every quantity is centred on the large-m truth (Lyu-Welsh limit from the full-data ML fit, dashed zero line): points are simulation means and the wide translucent bands are the fixed-m truth S_m (exact RESI of the expected design at that n_per_site, constant across n_schools). Coefficients are multiplied by sign(S) so that positive means larger in magnitude in both RESI rows. The gap between points and the zero line is the total bias against the large-m target; the gap between points and the band is estimator bias at fixed m."}
+.sim_pal <- c(
+  "#1F77B4", "#D62728", "#2CA02C", "#FF7F0E", "#9467BD",
+  "#8C564B", "#E377C2", "#17BECF", "#BCBD22", "#7F7F7F"
+)
+n_per_site.vec <- sort(unique(hybrid_fixedn_summary$n_per_site))
+n_schools.vec  <- sort(unique(hybrid_fixedn_summary$n_schools))
+school_pch <- setNames(c(15, 16, 17, 18, 8, 4)[seq_along(n_schools.vec)], n_schools.vec)
+
+row_limits <- function(values, reference = 0) {
+  values <- c(values, reference)
+  limits <- range(values, na.rm = TRUE)
+  padding <- if (diff(limits) > 0) diff(limits) * 0.08 else 0.05
+  limits + c(-padding, padding)
+}
+
+# x = n_schools * n_per_site; solid = vary n_per_site at fixed n_schools,
+# dotted = vary n_schools at fixed n_per_site. If `truth_m_col` is given, the
+# finite-m truth is drawn as a wide translucent band spanning each n_per_site,
+# or, with `per_cell = TRUE`, as a short translucent tick at each design cell.
+plot_combined <- function(df, term_col, value_col, ylab, main, ref, cols,
+                          ref_col = "gray40", ref_lty = 2, truth_m_col = NULL,
+                          per_cell = FALSE) {
+  terms <- unique(df[[term_col]])
+  df$N_planned <- df$n_schools * df$n_per_site
+  yvals <- c(df[[value_col]], if (!is.null(truth_m_col)) df[[truth_m_col]])
+  par(mar = c(3.6, 4.0, 2.2, 0.5), mgp = c(2.2, 0.6, 0))
+  plot(NULL, xlim = range(df$N_planned), ylim = row_limits(yvals, ref),
+       log = "x", xlab = "planned students (n_schools x n_per_site)", ylab = ylab,
+       main = main, bty = "l")
+  abline(h = ref, lty = ref_lty, col = ref_col, lwd = 1.5)
+  for (term in terms) {
+    td <- df[df[[term_col]] == term, ]
+    if (!is.null(truth_m_col) && per_cell) {
+      segments(td$N_planned * 0.9, td[[truth_m_col]], td$N_planned / 0.9,
+               td[[truth_m_col]], col = adjustcolor(cols[[term]], 0.35),
+               lwd = 7, lend = 1)
+    } else if (!is.null(truth_m_col)) {
+      for (m in n_per_site.vec) {
+        s <- td[td$n_per_site == m, ]
+        segments(min(s$N_planned), s[[truth_m_col]][1], max(s$N_planned),
+                 s[[truth_m_col]][1], col = adjustcolor(cols[[term]], 0.35),
+                 lwd = 7, lend = 1)
+      }
+    }
+    for (ns in n_schools.vec) {
+      s <- td[td$n_schools == ns, ]; s <- s[order(s$n_per_site), ]
+      lines(s$N_planned, s[[value_col]], col = cols[[term]], lwd = 2, lty = 1)
+    }
+    for (m in n_per_site.vec) {
+      s <- td[td$n_per_site == m, ]; s <- s[order(s$n_schools), ]
+      lines(s$N_planned, s[[value_col]], col = cols[[term]], lwd = 1.5, lty = 3)
+    }
+    points(td$N_planned, td[[value_col]], col = cols[[term]],
+           pch = school_pch[as.character(td$n_schools)], cex = 1.1)
+  }
+}
+legend_panel <- function(cols, title, band_labels = NULL,
+                         ref_col = "gray40", ref_lty = 2) {
+  par(mar = c(0.5, 0.3, 0.5, 0.3))
+  plot.new()
+  legend("top", legend = names(cols), col = cols, lwd = 2, bty = "n",
+         cex = 0.85, title = title)
+  key <- c(paste("n_schools =", n_schools.vec), "vary n_per_site", "vary n_schools")
+  pch <- c(school_pch, NA, NA); lty <- c(rep(NA, length(n_schools.vec)), 1, 3)
+  lwd <- c(rep(NA, length(n_schools.vec)), 2, 1.5); col <- rep("black", length(key))
+  if (!is.null(band_labels)) {
+    key <- c(key, band_labels)
+    pch <- c(pch, NA, NA); lty <- c(lty, ref_lty, 1); lwd <- c(lwd, 1.5, 7)
+    col <- c(col, ref_col, adjustcolor("black", 0.35))
+  }
+  legend("bottom", legend = key, pch = pch, lty = lty, lwd = lwd, col = col,
+         bty = "n", cex = 0.8)
+}
+
+# One color per model term, shared by every row (ANOVA terms and fixed-effect
+# parameters take the color of their coefficient).
+coef_terms <- c("(Intercept)", "year", "femaleMale", "black1", "hispanic1",
+                "size_100", "lowinc_10")
+term_cols <- setNames(.sim_pal[seq_along(coef_terms)], coef_terms)
+anova_cols <- c(year = term_cols[["year"]], female = term_cols[["femaleMale"]],
+                black = term_cols[["black1"]], hispanic = term_cols[["hispanic1"]],
+                size_100 = term_cols[["size_100"]], lowinc_10 = term_cols[["lowinc_10"]])
+vc_palette <- c("var_schoolid_(Intercept)" = .sim_pal[8],
+                "var_childid:schoolid_(Intercept)" = .sim_pal[9],
+                "var_Residual" = .sim_pal[10],
+                "var_childid:schoolid_year" = "#393B79",
+                "cov_childid:schoolid_(Intercept)_year" = "#AD494A")
+between_terms <- c("(Intercept)", "size_100", "lowinc_10", "var_schoolid_(Intercept)")
+
+two_cols <- function(df, cols, value_col, ylab, main, ref, legend_title,
+                     ref_col = "gray40", ref_lty = 2, truth_m_col = NULL, per_cell = FALSE,
+                     band_labels = c("large-m truth (Lyu limit)", "fixed-m truth (S_m)")) {
+  is_b <- df$term %in% between_terms
+  for (part in list(list(df[is_b, ], "Between-school: "), list(df[!is_b, ], "Within-school: "))) {
+    plot_combined(part[[1]], "term", value_col, ylab, paste0(part[[2]], main), ref,
+                  cols, ref_col, ref_lty, truth_m_col, per_cell)
+  }
+  legend_panel(cols[unique(df$term)], legend_title,
+               band_labels = if (!is.null(truth_m_col)) band_labels,
+               ref_col = ref_col, ref_lty = ref_lty)
+}
+
+plot_calibration <- function(cal) {
+  fe_df <- cal$summary[grepl("^beta_", cal$summary$param), ]
+  fe_df$term <- sub("^beta_", "", fe_df$param)
+  # Finite-(g, m) SE reference: design-averaged per-unit SE (averaging the
+  # conditional covariance over resampled sets of n_schools school profiles)
+  # relative to the limiting (Lyu) per-unit SE used to scale the MC error SD.
+  # Cached because it takes a few minutes; delete the .rds to recompute.
+  design_avg_file <- cal$design_avg_file
+  if (file.exists(design_avg_file)) {
+    design_avg_se <- readRDS(design_avg_file)
+  } else {
+    set.seed(20261115)
+    cells <- unique(fe_df[, c("n_schools", "n_per_site")])
+    design_avg_se <- do.call(rbind, lapply(seq_len(nrow(cells)), function(i) {
+      se <- designAveragedSe(cal$fit, cells$n_schools[i], cells$n_per_site[i])
+      data.frame(n_schools = cells$n_schools[i], n_per_site = cells$n_per_site[i],
+                 term = names(se), se_unit_design_avg = unname(se))
+    }))
+    saveRDS(design_avg_se, design_avg_file)
+  }
+  fe_df <- merge(fe_df, design_avg_se, by = c("n_schools", "n_per_site", "term"),
+                 all.x = TRUE, sort = FALSE)
+  fe_df$se_ratio_design_avg <- fe_df$se_unit_design_avg / fe_df$truth_se_scaled
+  vc_df <- cal$summary[!grepl("^beta_", cal$summary$param), ]
+  vc_df$term <- vc_df$param
+  vc_cols <- vc_palette[unique(vc_df$term)]
+  vc_df$rel_bias_pct <- 100 * vc_df$bias / vc_df$truth
+  # RESI rows: centre on the large-m (Lyu) truth and orient by its sign, so that
+  # positive means "larger in magnitude than the Lyu limit" in both RESI rows.
+  resi_df <- cal$resi_summary
+  sgn <- ifelse(resi_df$truth_resi < 0, -1, 1)
+  resi_df$mean_dev  <- sgn * (resi_df$mc_mean_resi - resi_df$truth_resi)
+  resi_df$truth_dev <- sgn * (resi_df$expected_resi_m - resi_df$truth_resi)
+  resi_coef_df  <- resi_df[resi_df$table == "coefficients", ]
+  resi_anova_df <- resi_df[resi_df$table == "anova", ]
+
+  layout(matrix(1:15, nrow = 5L, byrow = TRUE), widths = c(4.0, 4.0, 1.7))
+  two_cols(fe_df, term_cols, "se_ratio", "mean_model_se / mc_sd",
+           "fixed-effect SE calibration", ref = 1, legend_title = "Fixed effect")
+  two_cols(vc_df, vc_cols, "rel_bias_pct", "Relative bias (%)",
+           "variance-component bias", ref = 0, legend_title = "Variance component")
+  two_cols(fe_df, term_cols, "scaled_mc_error_sd_ratio", "scaled MC error SD / limiting SE",
+           "scaled MC error SD ratio", ref = 1, ref_col = "black", ref_lty = 1,
+           legend_title = "Fixed effect", truth_m_col = "se_ratio_design_avg", per_cell = TRUE,
+           band_labels = c("large-m limiting SE", "design-averaged SE (g, m)"))
+  two_cols(resi_coef_df, term_cols, "mean_dev", "sign(S) x (value - Lyu limit)",
+           "RESI coefficient", ref = 0, legend_title = "Coefficient",
+           truth_m_col = "truth_dev")
+  two_cols(resi_anova_df, anova_cols, "mean_dev", "value - Lyu limit",
+           "RESI ANOVA term", ref = 0, legend_title = "ANOVA term",
+           truth_m_col = "truth_dev")
+}
+plot_calibration(cal_A)
+```
+
+## RESI point-estimator calibration
+
+RESI is design dependent: for a fixed average cluster size $m$, its value
+changes with $m$ because the precision of between-school coefficients scales
+like $g/(\tau^2_{school} + \sigma^2_{w}/m)$, and partly clustered student
+covariates (e.g. `black`, `hispanic`) borrow between-school information that
+vanishes as $m$ grows. The calibration target, `truth_resi`, is therefore the
+Lyu and Welsh (2022, Theorem 1) increasing-cluster-size limit
+($g, m \to \infty$), computed from the full-sample Model A ML fit by
+`lyuLimitResi()` (`RESI/R/mixed_simulations.R`):
+
+- between-school terms (intercept, `size_100`, `lowinc_10`), normalised by
+  $g$: $S_k = \beta_k / \sqrt{\tau^2_{school}[C^{-1}]_{kk}}$, with
+  $C = g^{-1}\sum_s x_s x_s^\top$ over the 60 observed school profiles;
+- within-school terms, normalised by the student count $N$ (`level = 2`):
+  $S_k = \beta_k / \sqrt{[(I_w/N)^{-1}]_{kk}}$, where $I_w$ is the GLS
+  information with the school intercept projected out (child random effect
+  and residual retained);
+- ANOVA terms: $S_T = \sqrt{\beta_T^\top (n_T V_{TT})^{-1} \beta_T}$ with
+  no $-\mathrm{df}$ correction.
+
+`expected_resi_m` is the exact RESI under the expected resampled design at
+the given `n_per_site` (same formula, finite $m$); it equals the
+`resi_pe` full-data value at the observed mean school size and converges to
+`truth_resi` as $m \to \infty$. `truth_resi_full_data` is the earlier
+`resi_pe(truth_fit)` reference (observed design, $m \approx 29$, with the
+ANOVA $-\mathrm{df}$ correction). The summary table reports bias as
+`truth_resi - mc_mean_resi`; the figure instead plots the simulation mean
+and `expected_resi_m` relative to `truth_resi`.
+Simulated datasets are refit by REML with model-based `stats::vcov`, and the
+fitted student count `n` is recorded for each design. These metrics
+calibrate the RESI point estimator only, not its sampling variance or
+confidence intervals.
+
+```{r hybrid-fixedn-resi-calibration}
+kable(hybrid_fixedn_resi_summary[, c("n_schools", "n_per_site", "table", "term",
+             "variation_level", "n_level", "n", "n_sd",
+             "n_success", "truth_resi", "expected_resi_m",
+             "truth_resi_full_data", "mc_mean_resi",
+             "bias_resi", "mc_sd_resi")],
+  digits = 3, row.names = FALSE,
+  caption = "RESI point-estimator calibration by term, n_schools, and n_per_site (hybrid plasmode)")
+```
+
+## Model B: child-level random slope for `year`
+
+Model B adds a student-level random slope for `year`,
+`math ~ year + female + black + hispanic + size_100 + lowinc_10 + (1 | schoolid) + (year | childid:schoolid)`
+(`tests/egsingle_models.R`), and is run through the same 4 × 3 hybrid plasmode
+(`Rscript tests/run_hybrid_plasmode.R B`, seed 2026, 1000 replicates per
+cell). The simulation code handles general child-level random-effect designs
+$Z_j$: the BLUPs are whitened and rescaled to the fitted child covariance
+$G$, and the Lyu-Welsh within-school limit uses
+$V_j = Z_j G Z_j^\top + \sigma^2 I$ in place of the random-intercept
+$V_j$. The school level remains a random intercept. Because the random slope is
+at the child level, `resi_pe` keeps $n = N$ students for `year` (a random
+slope at a coarser level, e.g. school, would make `year`'s $n$ the number of
+schools).
+
+```{r model-b-load}
+cal_B <- load_calibration("B")
+feB <- cal_B$summary[grepl("^beta_", cal_B$summary$param), ]
+wideB <- reshape(feB[, c("param", "n_schools", "n_per_site", "se_ratio")],
+                 idvar = c("param", "n_schools"), timevar = "n_per_site", direction = "wide")
+kable(wideB[order(wideB$param, wideB$n_schools), ], digits = 3, row.names = FALSE,
+      caption = "Model B: mean_model_se / mc_sd by fixed effect, n_schools, and n_per_site")
+vcB <- cal_B$summary[!grepl("^beta_", cal_B$summary$param), ]
+vcB$rel_bias_pct <- 100 * vcB$bias / vcB$truth
+widevcB <- reshape(vcB[, c("param", "n_schools", "n_per_site", "rel_bias_pct")],
+                   idvar = c("param", "n_schools"), timevar = "n_per_site", direction = "wide")
+kable(widevcB[order(widevcB$param, widevcB$n_schools), ], digits = 2, row.names = FALSE,
+      caption = "Model B: variance-component relative bias (%)")
+```
+
+```{r fig-model-b, fig.width=15, fig.height=18, fig.cap="Model B (child-level random slope for year): the same panels as the Model A figure. Rows: fixed-effect SE ratio, variance-component relative bias (including the child slope variance and intercept-slope covariance), scaled Monte Carlo error SD / limiting SE with design-averaged SE ticks, and RESI coefficient and ANOVA-term simulation means relative to the Lyu-Welsh large-m truth, with the fixed-m truth S_m bands."}
+plot_calibration(cal_B)
+```
+
+```{r model-b-resi-table}
+kable(cal_B$resi_summary[, c("n_schools", "n_per_site", "table", "term", "n",
+                             "truth_resi", "expected_resi_m", "mc_mean_resi",
+                             "bias_resi", "mc_sd_resi")],
+      digits = 3, row.names = FALSE,
+      caption = "Model B: RESI point-estimator calibration by term, n_schools, and n_per_site")
+```
+
+Model B calibrates like Model A. The model-based SE ratios are within
+0.92-1.05, all variance components (including the slope variance and the
+intercept-slope covariance) have relative bias below 1%, and the `year`
+RESI matches its Lyu limit at every design. The between-school terms show the
+same finite-$m$ approach to the large-$m$ limit as in Model A, tracked by the
+fixed-$m$ truth $S_m$.
+
+## Confidence interval coverage
+
+`tests/run_mixed_ci_coverage.R` reruns the hybrid plasmode on
+`n_schools` $\in \{15, 100\}$ × `n_per_site` $\in \{25, 200\}$ (1000
+replicates each). For each replicate it computes the RESI intervals of
+`RESI:::.resi_ci_mixed()` (derivation: `notes/resi_mixed_ci.qmd`) with:
+
+- the model-based covariance (`stats::vcov`, with the variance-component
+  term), and
+- the school-clustered CR2 covariance;
+
+each with the normal, QF and CF methods (coefficients are signed, so QF
+equals normal there). Coverage is scored against the fixed-$m$ target $S_m$
+(`expectedDesignResi`) and the large-$m$ Lyu limit $S_{\text{Lyu}}$. The grey
+band is $0.95 \pm 1.96$ Monte Carlo SE.
+
+```{r ci-coverage, fig.width = 11, fig.height = 9}
+ci_cov_all <- readRDS("mixed_ci_coverage.rds")
+ci_cov <- ci_cov_all[ci_cov_all$engine == "lmer", ]
+cells <- c("g15m25", "g15m200", "g100m25", "g100m200")
+ci_cov$cell <- factor(paste0("g", ci_cov$n_schools, "m", ci_cov$n_per_site), cells)
+cov_panel <- function(d, target, main, cols) {
+  plot(NA, xlim = c(0.8, 4.2), ylim = c(min(0.5, d[[paste0("coverage_", target)]]), 1), xaxt = "n", xlab = "",
+       ylab = paste("Coverage of", target), main = main)
+  axis(1, at = 1:4, labels = c("g=15, m=25", "g=15, m=200", "g=100, m=25", "g=100, m=200"),
+       cex.axis = 0.8)
+  se <- 1.96 * sqrt(0.95 * 0.05 / 1000)
+  rect(0, 0.95 - se, 5, 0.95 + se, col = "gray90", border = NA)
+  abline(h = 0.95, lty = 2, col = "gray40")
+  for (tm in names(cols)) {
+    x <- d[d$term == tm, ]
+    x <- x[order(x$cell), ]
+    if (!nrow(x)) next
+    lines(as.integer(x$cell), x[[paste0("coverage_", target)]], col = cols[[tm]],
+          lty = if (tm %in% between_terms) 1 else 2, type = "b", pch = 19)
+  }
+}
+layout(matrix(1:12, nrow = 4L, byrow = TRUE), widths = c(4, 4, 1.7))
+for (spec in list(list("coefficients", "normal", term_cols, "coefficient, normal"),
+                  list("anova", "qf", anova_cols, "ANOVA, QF"))) {
+  for (target in c("S_m", "S_Lyu")) {
+    for (cv in c("model", "CR2")) {
+      d <- ci_cov[ci_cov$table == spec[[1]] & ci_cov$method == spec[[2]] & ci_cov$covariance == cv, ]
+      cov_panel(d, target, paste0(cv, " covariance: ", spec[[4]]), spec[[3]])
+    }
+    plot.new()
+    legend("center", legend = names(spec[[3]]), col = spec[[3]], lty = ifelse(names(spec[[3]]) %in% between_terms, 1, 2),
+           pch = 19, bty = "n", cex = 0.8, title = "solid: between school")
+  }
+}
+```
+
+```{r ci-coverage-table}
+ci_wide <- reshape(ci_cov[, c("n_schools", "n_per_site", "table", "term", "covariance", "method",
+                              "coverage_S_m", "coverage_S_Lyu")],
+                   idvar = c("n_schools", "n_per_site", "table", "term", "covariance"),
+                   timevar = "method", direction = "wide")
+kable(ci_wide[order(ci_wide$table, ci_wide$covariance, ci_wide$term, ci_wide$n_schools, ci_wide$n_per_site), ],
+      digits = 3, row.names = FALSE,
+      caption = "Coverage of S_m and S_Lyu by method (nominal 0.95; Monte Carlo SE 0.007)")
+se_tab <- ci_cov[ci_cov$method == "normal" & ci_cov$table == "coefficients",
+                 c("n_schools", "n_per_site", "term", "covariance", "mean_se", "mc_sd_est")]
+se_tab$ratio <- se_tab$mean_se / se_tab$mc_sd_est
+kable(reshape(se_tab[, c("n_schools", "n_per_site", "term", "covariance", "ratio")],
+              idvar = c("n_schools", "n_per_site", "term"), timevar = "covariance",
+              direction = "wide"),
+      digits = 3, row.names = FALSE,
+      caption = "Mean estimated SD of the coefficient RESI / Monte Carlo SD")
+```
+
+### Full design grid (Model A)
+
+The same simulation on the full grid `n_schools` $\in \{15, 30, 60, 100\}$ ×
+`n_per_site` $\in \{25, 100, 200\}$ (lmer only, 1000 replicates per cell,
+seed 2027, `resi.coverage.tag = "_grid"`). It also includes CR2 with the
+$t_{g-1}$ / $F(\cdot, g-1)$ reference ("CR2-t"), which is now the package
+default for cluster-robust intervals (next subsection). Each panel shows the
+mean coverage of $S_m$ over the non-intercept terms (solid) and the minimum
+over terms (dotted), against `n_schools`, with one color per `n_per_site`.
+
+```{r ci-grid-helpers}
+ci_agg <- function(cov_df) {
+  x <- cov_df[cov_df$term != "(Intercept)", ]
+  a <- aggregate(coverage_S_m ~ covariance + table + method + n_schools + n_per_site, x,
+                 function(v) c(mean = mean(v), min = min(v)))
+  do.call(data.frame, a)
+}
+ci_grid <- readRDS("mixed_ci_coverage_grid.rds")
+grid_agg <- ci_agg(ci_grid)
+```
+
+```{r ci-grid, fig.width = 11, fig.height = 6.5}
+m_cols <- setNames(c("#1b9e77", "#d95f02", "#7570b3"), c(25, 100, 200))
+par(mfrow = c(2, 3), mar = c(4, 4, 2.5, 1))
+for (spec in list(c("coefficients", "normal"), c("anova", "qf"))) {
+  for (cv in c("model", "CR2", "CR2-t")) {
+    d <- grid_agg[grid_agg$table == spec[1] & grid_agg$method == spec[2] & grid_agg$covariance == cv, ]
+    plot(NA, xlim = c(15, 100), ylim = c(0.75, 1), log = "x", xaxt = "n",
+         xlab = "n_schools", ylab = "Coverage of S_m",
+         main = sprintf("%s covariance: %s, %s", cv, spec[1], spec[2]))
+    axis(1, at = c(15, 30, 60, 100))
+    se <- 1.96 * sqrt(0.95 * 0.05 / 1000)
+    rect(1, 0.95 - se, 1000, 0.95 + se, col = "gray90", border = NA)
+    abline(h = 0.95, lty = 2, col = "gray40")
+    for (m in names(m_cols)) {
+      dm <- d[d$n_per_site == as.numeric(m), ]
+      dm <- dm[order(dm$n_schools), ]
+      lines(dm$n_schools, dm$coverage_S_m.mean, col = m_cols[[m]], type = "b", pch = 19)
+      lines(dm$n_schools, dm$coverage_S_m.min, col = m_cols[[m]], lty = 3)
+    }
+    if (cv == "model" && spec[1] == "coefficients")
+      legend("bottomright", legend = paste("n_per_site =", names(m_cols)), col = m_cols,
+             lty = 1, pch = 19, bty = "n", cex = 0.85)
+  }
+}
+```
+
+```{r ci-grid-table}
+fmt_agg <- function(agg) {
+  agg$value <- sprintf("%.3f / %.3f", agg$coverage_S_m.mean, agg$coverage_S_m.min)
+  w <- reshape(agg[, c("table", "method", "n_schools", "n_per_site", "covariance", "value")],
+               idvar = c("table", "method", "n_schools", "n_per_site"), timevar = "covariance",
+               direction = "wide")
+  names(w) <- sub("value\\.", "", names(w))
+  w[order(w$table, w$method, w$n_schools, w$n_per_site), ]
+}
+kable(fmt_agg(grid_agg[grid_agg$method != "cf" | grid_agg$table == "anova", ]), row.names = FALSE,
+      caption = "Model A grid: coverage of S_m, mean / minimum over non-intercept terms")
+```
+
+With the model-based covariance, the QF and CF intervals cover close to
+nominal in every cell (cell means 0.944-0.959), and so do the coefficient
+intervals (0.933-0.949). The normal ANOVA interval undercovers near-boundary
+terms at small `n_schools`, as before. CR2-t coverage rises steadily with
+`n_schools`: mean coefficient coverage is about 0.91-0.92 at 15 schools, 0.92-0.93 at 30,
+0.93-0.94 at 60 and 0.94 at 100. Plain CR2 is 0.01-0.03 lower at
+`n_schools` $\le 30$. `n_per_site` has little effect.
+
+### Model B coverage
+
+The same coverage simulation for Model B (child-level random slope for
+`year`; 2×2 corner cells, lmer only, 1000 replicates, seed 2027). The `lme`
+refit is not used because it assumes random intercepts only.
+
+```{r ci-model-b}
+ci_B <- readRDS("mixed_ci_coverage_B.rds")
+agg_B <- ci_agg(ci_B)
+kable(fmt_agg(agg_B[agg_B$method != "cf" | agg_B$table == "anova", ]), row.names = FALSE,
+      caption = "Model B: coverage of S_m, mean / minimum over non-intercept terms")
+se_B <- ci_B[ci_B$method == "normal" & ci_B$table == "coefficients" & ci_B$covariance != "CR2-t",
+             c("n_schools", "n_per_site", "term", "covariance", "mean_se", "mc_sd_est")]
+se_B$ratio <- se_B$mean_se / se_B$mc_sd_est
+kable(reshape(se_B[, c("n_schools", "n_per_site", "term", "covariance", "ratio")],
+              idvar = c("n_schools", "n_per_site", "term"), timevar = "covariance", direction = "wide"),
+      digits = 3, row.names = FALSE,
+      caption = "Model B: mean estimated SD of the coefficient RESI / Monte Carlo SD")
+```
+
+The model-based coefficient, QF and CF intervals cover at 0.94-0.97 on
+average in every cell. The normal ANOVA interval again undercovers at 15
+schools (0.93).
+`year` covers at 0.93-0.95, so the random-slope sample-size rule (n = number
+of children) gives correctly scaled intervals. With 15 schools, CR2
+underestimates the SD of the RESI more than in Model A (ratios 0.64-0.93;
+`year` 0.64-0.68), so even CR2-t covers only 0.86-0.87 for `year` (cell
+means 0.91-0.95). At 100 schools CR2 and CR2-t cover at 0.93-0.95.
+
+### Finite-df reference for CR2 (package default)
+
+The CR2 rows above use normal / $\chi^2$ references. Because the CR2 meat
+is estimated from only $g$ clusters, the package now uses a $t_{g-1}$ /
+$F(\cdot, g-1)$ reference automatically for cluster-robust intervals.
+Model-based intervals are unchanged (see `notes/resi_mixed_ci.qmd`, "Finite-df
+reference"). `tests/run_cr2_reference_eval.R` compares the two references
+at `n_schools = 15` (1000 replicates per cell) on egsingle and on
+`mlmRev::star` (fresh seeds). The evaluation used a 200-point midpoint rule
+over $W$. The package uses 20-node Gauss–Laguerre, which differs by at most
+$3 \times 10^{-4}$ in tail probability.
+
+```{r cr2-reference}
+cr2_eval <- do.call(rbind, lapply(c("egsingle", "star"), function(ds) {
+  long <- readRDS(paste0("cr2_reference_eval_", ds, ".rds"))
+  s <- summarize_coverage(split(long, long$n_per_site))
+  cbind(dataset = ds, s[s$covariance %in% c("CR2", "CR2-t") & s$term != "(Intercept)", ])
+}))
+cr2_agg <- aggregate(coverage_S_m ~ dataset + n_per_site + table + method + covariance, cr2_eval,
+                     function(x) c(mean = mean(x), min = min(x)))
+cr2_agg <- do.call(data.frame, cr2_agg)
+cr2_agg <- reshape(cr2_agg, idvar = c("dataset", "n_per_site", "table", "method"),
+                   timevar = "covariance", direction = "wide")
+names(cr2_agg) <- sub("coverage_S_m\\.", "", names(cr2_agg))
+kable(cr2_agg[cr2_agg$table == "anova" | cr2_agg$method == "normal", ], digits = 3, row.names = FALSE,
+      caption = paste("Coverage of S_m at n_schools = 15, CR2 with normal vs t(g - 1) reference:",
+                      "mean and minimum over non-intercept terms"))
+```
+
+The $t_{g-1}$ reference raises mean coverage by about 0.03 in both datasets
+without over-covering (maximum about 0.98). The intercept is essentially
+unchanged: its under-coverage at small $g$ comes from skewness and SE
+under-estimation, not from the quantile.
+
+### `nlme::lme` fits
+
+Each replicate is also refitted with `nlme::lme(fixed, random = ~ 1 | schoolid/childid, method = "REML")`
+(the replicate lmer fits are also REML)
+and passed through `resi()`'s lme path, which maps the fit to the same
+$V = \sigma^2(I + Z\Lambda\Lambda^\top Z^\top)$ representation as lmer (see
+`notes/resi_mixed_ci.qmd`). The two engines optimise the same likelihood
+with different optimisers, so the intervals should agree up to the
+optimiser tolerance, and so should the coverage.
+
+Results:
+
+- nlme's default optimiser (`nlminb`) failed to converge in some
+  replicates: 0, 69, 80 and 191 of 1000 in the four cells (g = 15, m = 25;
+  100, 25; 15, 200; 100, 200). lmer converged in all 1000. These are
+  fitting failures in `nlme::lme`, not in the RESI code, but the lme
+  coverage below is computed on the remaining replicates.
+- Where both engines fit, estimates agree to $3 \times 10^{-4}$ and
+  interval endpoints to $5 \times 10^{-5}$–$4 \times 10^{-4}$, except the
+  model-based intervals at g = 15, m = 25. There the largest endpoint
+  difference is about 0.23, which is consistent with near-singular fits
+  ($\hat\tau^2_{\text{school}} \approx 0$): lmer reaches the boundary, but
+  lme's log-scale parameterisation cannot, so the numerical Hessian of the
+  $\psi$ term differs. The effect on coverage there is at most 0.001.
+- Coverage differs from lmer by at most 0.012 in every cell.
+- The lmer rows reproduce the previous lmer-only run exactly (same seed).
+
+```{r ci-lme}
+agree <- readRDS("mixed_ci_engine_agreement.rds")
+kable(agree, digits = 8, row.names = FALSE,
+      caption = "Maximum |lme - lmer| difference over replicates and terms, per cell")
+lme_cmp <- merge(
+  ci_cov_all[ci_cov_all$engine == "lmer", c("n_schools", "n_per_site", "table", "term", "covariance",
+                                            "method", "coverage_S_m", "coverage_S_Lyu")],
+  ci_cov_all[ci_cov_all$engine == "lme", c("n_schools", "n_per_site", "table", "term", "covariance",
+                                           "method", "coverage_S_m", "coverage_S_Lyu", "n_rep")],
+  by = c("n_schools", "n_per_site", "table", "term", "covariance", "method"),
+  suffixes = c(".lmer", ".lme"))
+kable(data.frame(
+  quantity = c("rows compared", "lme replicates per row (min)",
+               "max |coverage S_m lme - lmer|", "max |coverage S_Lyu lme - lmer|"),
+  value = c(nrow(lme_cmp), min(lme_cmp$n_rep),
+            max(abs(lme_cmp$coverage_S_m.lme - lme_cmp$coverage_S_m.lmer)),
+            max(abs(lme_cmp$coverage_S_Lyu.lme - lme_cmp$coverage_S_Lyu.lmer)))),
+  digits = 4, caption = "Coverage of lme intervals relative to lmer intervals")
 ```
 
 ## Interpretation
 
-- **`beta_year`: hypothesis largely confirmed.** `se_ratio` jumped from a
-  flat ~0.31-0.33 (real data) to ~0.72-0.78 (synthetic, zero true slope
-  heterogeneity). Model A has no random slope for `year`, so real
-  cross-school/child heterogeneity in the true year-slope was leaking into
-  the `year` fixed effect's sampling variability; removing that
-  heterogeneity recovered most (not all) of the calibration.
-- **`beta_female`/`black`/`hispanic1`: not explained.** `se_ratio` stayed
-  similarly poor, or slightly worse, under the synthetic (zero true slope
-  heterogeneity) DGP. Since these are child-level, time-invariant
-  covariates, this points away from slope heterogeneity and toward the
-  resampling design itself -- most plausibly the two-stage
-  **with-replacement** child resampling, which re-keys duplicate real
-  children as independent clusters within a replicate.
-- **`var_schoolid_(Intercept)` growing bias for `n_schools >= 60`: not
-  explained.** Still grows to about -18% to -24% (vs. -28% to -35% real
-  data) even with zero true slope heterogeneity -- likely the same
-  with-replacement-oversampling-beyond-the-60-school-pool mechanism, not
-  slope heterogeneity.
-- `beta_(Intercept)`/`size_100`/`lowinc_10` (school-level): similar or
-  slightly worse under the synthetic DGP; inconclusive on this diagnostic
-  alone.
+- **Fixed-effect SE calibration and variance-component bias** are shown
+  across the joint `n_schools` by `n_per_site` grid in a single panel per
+  diagnostic, plotted against the planned total student count.
+- The RESI rows separate the two sources of discrepancy from the large-$m$
+  target. The band ($S_m$ minus the Lyu limit) is the finite-$m$ estimand
+  gap. It is large for between-school terms, small for partly clustered
+  student covariates (`black`, `hispanic`), and essentially zero for `year`
+  and `female`, and it shrinks as `n_per_site` grows. The distance from the
+  points to the band is estimator bias at fixed $m$. It is negligible for
+  coefficients. For ANOVA terms it is about $1/(2 S n)$, from the
+  $-\mathrm{df}$ correction, truncation and square root, so it shrinks with
+  `n_schools` for between-school terms. This approximation needs
+  $S\sqrt{n}$ to be large; for near-null terms (`female`, and `size_100` at
+  small `n_schools`) truncation at zero dominates instead. These are point-estimator
+  diagnostics; interval coverage is in the next bullet.
+- **CI coverage.** With the model-based covariance, coverage of $S_m$ is
+  close to 0.95 in every cell (cell means 0.94-0.96; the lowest values,
+  about 0.90-0.92, are for `black`/`hispanic` and `lowinc_10` at
+  `n_schools = 15`). The normal ANOVA interval undercovers the near-boundary
+  terms at `n_schools = 15`; QF and CF do not. With CR2, coverage is
+  0.82-0.94 at `n_schools = 15`, because the estimated SD of the RESI
+  underestimates its Monte Carlo SD by 20-30% there (the usual
+  few-cluster behaviour), and 0.93-0.95 at `n_schools = 100`. The CR2 RESI
+  is much more variable than the model-based one for terms with a large
+  RESI and a small SE (e.g. `year`: Monte Carlo SD 0.29 vs 0.03 at
+  `n_schools = 100`, `n_per_site = 200`). The school-level meat is estimated
+  from only `n_schools` clusters, and the intervals reflect that variability.
+  The package default for CR2 uses a $t_{g-1}$ reference, which raises
+  coverage by about 0.03 at 15 schools and 0.01 at 30; across the full
+  grid, CR2-t coverage rises steadily towards 0.95 as `n_schools` grows.
+  Model B (random slope) behaves like Model A with the model-based
+  covariance. Its CR2 intervals undercover more at 15 schools.
+  Coverage of $S_{\text{Lyu}}$ matches coverage of $S_m$ for within-school
+  terms. For between-school terms it drops where the fixed-$m$ gap is large
+  relative to the interval width (`lowinc_10`: about 0.6 at
+  `n_schools = 100`, `n_per_site = 25`), which is a property of the estimand,
+  not of the interval.
 
 # Open questions / next steps
 
-- Test the with-replacement-resampling-artifact hypothesis directly (e.g.
-  rerun with children sampled *without* replacement, or cap `n_schools` at
-  60) to see whether it explains the remaining child-level-covariate and
-  `var_schoolid` mis-calibration.
-- These findings are directly relevant to the open Goal 2 design question
-  about the effective sample size `n` for L-RESI: a single "number of
-  schools" (or "number of children") scaling will not correctly calibrate
-  SEs for *all* fixed effects simultaneously in this 3-level design; the
-  correct unit plausibly differs by which level a covariate varies at.
-- Decide whether `n_schools` values above 60 (oversampling beyond the real
-  school pool) should be dropped from future sweeps or are informative
-  as-is.
+- Simon's slope-heterogeneity hypothesis (see Purpose) has not been
+  confirmed directly for every term affected under full resampling of the
+  real data. Model A contains no random slopes. Model B adds a child-level
+  slope for `year` only; slopes for other terms, or school-level slopes, are
+  not simulated.
+- For 100 schools, source-school covariate profiles are sampled repeatedly
+  from the observed 60-school empirical distribution. Assessing sensitivity
+  to this finite school-profile pool remains an interpretation caveat.

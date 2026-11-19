@@ -52,7 +52,7 @@ commit `b11560a`, 2026-08-26).
 Extend the RESI package's point-estimator and confidence-interval (CI) machinery —
 currently implemented for `lm`/`glm` (bootstrap + asymptotic normal/QF/CF via
 `resi_asymptotic.R`) and for GEE (`geeglm`) and mixed models (`lmerMod`, `lme`,
-`glmmTMB`, point estimates only, CI "not developed" warning) — to cover:
+`glmmTMB`, point estimates only) — to cover:
 
 1. `mgcv::gam` and `mgcv::bam` (generalized additive models, including smooth terms)
 2. `mgcv::gamm` (GAMM wrapper around `nlme::lme` / `lme4`)
@@ -69,133 +69,86 @@ a trusted reference (bootstrap, or an independent implementation) before
 considering it validated.
 
 ### Goal 1: Longitudinal/clustered plasmode simulation dataset
-**Status:** Needs decision — see "Dataset investigation" below
-**Description:** Identify or construct a large longitudinal dataset (~1000+
-independent subjects/clusters) to serve as the plasmode base for simulations,
-analogous to how `insurancePlasmodeSim()` uses the `insurance` dataset (N=1338).
-**Key design decisions:**
-- [FILL IN] Which dataset(s) to use (see options below) — need confirmation.
-- [FILL IN] Whether to keep real covariates/outcome (pure plasmode) or keep real
-  covariates but simulate a known outcome model on top (to get ground-truth mixed
-  model / smooth-term parameters for calibration, since none of the candidate
-  real datasets have both >=1000 subjects AND a continuous outcome AND enough
-  covariate richness for smooth terms).
+**Status:** Done (2026-09-04).
+`mlmRev::egsingle` is the primary continuous-outcome plasmode dataset:
+60 schools, 1721 children, 7230 rows; 3-level nesting (occasion in child in
+school; 5-89 children per school, mean 28.7). `geepack::muscatine` is the
+binary-outcome companion; `lme4::InstEval` (crossed) and
+`mlmRev::Contraception` (few large sites) are later stress tests. The dataset
+surveys are archived in `log/claudeLog.md`.
 
-**Dataset investigation (done):**
-Checked `RESI/tests/testthat/test-resi.R` — existing tests use
-`nlme::Orthodont` (27 subjects) and `lme4::sleepstudy` (18 subjects) for
-`lmerMod`/`lme` tests. Both are far too small for a ~1000-subject simulation.
+| Variable | Level | Type | Description |
+|---|---|---|---|
+| `schoolid` | school (60) | factor | school id |
+| `childid` | child (1721), nested in school | factor | child id |
+| `year` | occasion | continuous | centred time (-2.5 to 2.5) |
+| `math` | occasion | continuous | **outcome** |
+| `female`, `black`, `hispanic` | child | binary factor | time invariant |
+| `size`, `lowinc`, `mobility` | school | continuous | school enrollment, % low income, % mobility |
 
-Surveyed built-in datasets in `lme4`, `nlme`, and `geepack` (already a `Suggests`
-dependency of RESI, used in existing tests) for longitudinal structure (repeated
-measures per independent subject) and subject count:
-
-| Dataset | Package | N subjects | Obs/subject | Outcome | Notes |
-|---|---|---|---|---|---|
-| `sleepstudy` | lme4 | 18 | 10 | continuous (Reaction) | used in existing tests; too small |
-| `Orthodont` | nlme | 27 | 4 | continuous (distance) | used in existing tests; too small |
-| `Quinidine` | nlme | 136 | ~11 | continuous (conc) | too small |
-| `InstEval` | lme4 | 2972 students | crossed w/ 1128 instructors | ordinal rating | crossed, not a simple longitudinal/time structure |
-| `ohio` | geepack | 537 | 4 | binary (wheeze) | classic GEE example; still <1000 |
-| `dietox` | geepack | 72 pigs | ~12 | continuous (weight) | too small |
-| **`muscatine`** | **geepack** | **4856** | **3 (ages 6,8,10 relative to `base_age`)** | **binary (`obese`)** | **largest candidate; age spans 6-18 across the sample, `gender` covariate; balanced 3-obs/subject design** |
-
-**Recommendation (pending your confirmation):** `geepack::muscatine` is the only
-built-in dataset across `lme4`/`nlme`/`geepack` with >=1000 independent subjects
-and a genuine repeated-measures/longitudinal structure. It has a *binary* outcome,
-which works for `glmer`/`bam(family=binomial)`/GEE-style validation but not for a
-plain continuous-outcome `lmer`/`lme`/Gaussian-`gam` plasmode the way `insurance`
-does for `lm`/`glm`. Options to resolve this, in order of how closely they match
-the paper's plasmode design:
-  (a) Use `muscatine` as-is for the binary/GLMM and `gam(family=binomial)` /
-      `bam` settings (true plasmode, matches paper philosophy).
-  (b) For continuous-outcome settings (`lmer`, `lme`, Gaussian `gam`/`gamm`),
-      resample `muscatine`'s subject/covariate structure (age, gender, cluster
-      sizes) but simulate a continuous outcome from a known mixed/smooth model —
-      this is no longer a pure plasmode design (the "truth" is simulated, not the
-      full-data MLE), so calibration targets change accordingly.
-  (c) Find/construct a different >=1000-subject dataset with a continuous
-      outcome — searched further per your request below; **resolved, see
-      "Extended search results"**.
-
-**Extended search results (done):** Installed and surveyed `mlmRev`, `JM`,
-`joineR`, and `merTools` (none of these were previously `Suggests` dependencies
-of RESI; installed locally for investigation only, not yet added to
-`DESCRIPTION`).
-
-| Dataset | Package | N subjects | Cluster/nesting | Occasions/subject | Outcome | Notes |
-|---|---|---|---|---|---|---|
-| **`egsingle`** | **mlmRev** | **1721 children** | **3-level: occasion in child in school (60 schools)** | **2-6 (unbalanced), continuous time `year`** | **continuous (`math`, growth-curve score)** | **Best match: only real dataset found with >=1000 subjects, a continuous repeated-measures outcome, and a continuous time variable suitable for a smooth term. See variable table below.** |
-| `star` | mlmRev | 11598 students | 2-level: student in school (80 schools), classroom/treatment also nested | 1-4 (grades K-3) | continuous (`read`, `math`) | Larger than egsingle; TN STAR class-size experiment; classroom `cltype` (treatment) adds a 3rd nesting level (class in school); more complex, keep as a backup/stress-test dataset |
-| `Chem97` | mlmRev | 31022 students | 3-level: student in school (2410) in LEA (131) | 1 (cross-sectional, not longitudinal) | continuous (`score`) | Good nested/nested (not crossed) nuisance structure but no repeated measures per student |
-| **`InstEval`** | **lme4** (already installed) | 2972 students crossed with 1128 instructors | **crossed, not nested** | n/a (each student rates multiple, non-nested instructors) | ordinal (`y`, 1-5) | As you suggested: interesting *crossed* random-effects case; keep as a distinct, later test case for effect-size definition under crossed designs, not part of the primary longitudinal goal |
-| **`Contraception`** | **mlmRev** | 1934 women | **60 districts, cluster sizes 2-118 (median 26)** | 1 (cross-sectional, not longitudinal) | binary (`use`) | Matches your "small number of sites, many observations per site" request; not longitudinal (one row/woman), so useful as a *clustered* (not repeated-measures) test case, e.g. for `gam`/`glmer` with a random intercept for district |
-| `pbc2` / `aids` | JM | 312 / 467 | subject only | up to 16 / 5 | continuous (`serBilir`) / CD4 count | too small |
-| `epileptic` / `heart.valve` / `liver` / `mental` | joineR | 605 / 256 / 488 / 150 | subject only | varies | continuous | all too small |
-| `hsb` | merTools | (same underlying data as `Hsb82`/`MathAchieve`, ~7185 students / 160 schools) | 2-level | 1 (cross-sectional) | continuous | no repeated measures |
-
-**Recommendation:** Use `mlmRev::egsingle` as the primary plasmode dataset for
-the continuous-outcome, longitudinal goals (`lmer`, `lme`, Gaussian `gam`/`gamm`)
-— it resolves the gap identified in the original search (>=1000 subjects *and*
-continuous outcome *and* a continuous time covariate for smooth terms). Keep
-`geepack::muscatine` as the binary-outcome companion dataset (for
-`glmer`/`bam(family=binomial)`). Treat `lme4::InstEval` (crossed) and
-`mlmRev::Contraception` (few-large-sites, non-longitudinal cluster) as
-secondary/stress-test datasets for later, per your comments, not part of the
-initial plasmode.
-
-**Variable / nesting-structure table for `egsingle` (for specifying model
-formulas):**
-
-| Variable | Level | Varies within | Type | Description |
-|---|---|---|---|---|
-| `schoolid` | 3 (school, n=60) | — | factor | school identifier |
-| `childid` | 2 (child, n=1721) | school | factor | child identifier, nested in school |
-| `year` | 1 (occasion, n=7230 rows) | child | continuous | time, centered (range -2.5 to 2.5, integer steps) |
-| `grade` | 1 (occasion) | child | continuous (0-4) | grade level, collinear with `year` |
-| `math` | 1 (occasion) | child | continuous | **outcome**: math achievement score |
-| `retained` | 1 (occasion) | child (mostly time-invariant: 1366/1721 children never change; time-varying for 355 children) | binary factor | held back a grade |
-| `female` | 2 (child) | — (time-invariant) | binary factor | child sex |
-| `black`, `hispanic` | 2 (child) | — (time-invariant) | binary factor | child race/ethnicity indicators |
-| `size` | 3 (school) | — (time-invariant) | continuous | school enrollment size |
-| `lowinc` | 3 (school) | — (time-invariant) | continuous | % low income at school |
-| `mobility` | 3 (school) | — (time-invariant) | continuous | % student mobility at school |
-
-**Confirmed (2026-09-04):** Use `mlmRev::egsingle` as the primary continuous-
-outcome dataset and `geepack::muscatine` as the binary-outcome companion. Fit
-formulas **with and without a random slope for `year`** (per your answer) —
-see Goal 5a for the two working model variants.
-
-**Files:** [FILL IN once formulas are set, e.g. `RESI/R/simulations.R`
-additions, `longitudinalPlasmodeSim()`]
+Covariates are rescaled by fixed divisors (not z-scores):
+`size_100 = size / 100`, `lowinc_10 = lowinc / 10`; fits use
+`lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5))`.
+**Model A** (the only model currently used):
+`math ~ year + female + black + hispanic + size_100 + lowinc_10 + (1 | schoolid/childid)`.
 
 ### Goal 2: Extend `resi_pe`/`resi_asymptotic` machinery to `lmer`/`lme`
-**Status:** Not started
-**Description:** Add asymptotic CI methods (QF and CF — mirroring
-`resi_asymptotic.R`'s `.resi_precompute_ext()`/`.resi_contrast_ext()` framework)
-for the existing `resi_pe.lmerMod` (L-RESI/CS-RESI) point estimates, and the
-analogous `resi_pe.lme` (nlme) if/when that exists. Currently `resi.lmerMod()`
-and `resi.lme()` explicitly warn that no CI procedure exists and return point
-estimates only.
-**Key design decisions:**
-- Does the extended influence-function derivation in the paper (which
-  treats $A_\theta$, $B_\theta$ as free parameters via the Delta method) carry
-  over directly when the "meat" is a **cluster-robust** (`clubSandwich::vcovCR`)
-  covariance instead of an HC (heteroscedasticity-consistent) covariance? Need a
-  math derivation note in `notes/` before implementing.
-- What is the effective sample size $n$ for the L-RESI CI (number of
-  clusters, as used for the point estimate) vs. CS-RESI CI (number of
-  observations, per the existing GEE CS-RESI convention)?
-- For the L-RESI the unit really depends on the study design. For small number of sites with large number of observations at each site the unit is really the individuals at each site. For many individuals with repeated measures in individual, the unit is the individual as well. Because the individual occurs at different levels in the mixed model, there really needs to be an option for the user to specify the unit and for the code to try to figure it out if they don't and report clearly what the unit is. This affects the scaling factor "n" for computing the RESI effect size.
-- `glmer` should (generalized linear mixed models) be in scope for this
-  goal, or only Gaussian `lmer`/`lme`. But let's hold off for now until we've validate mixed models and gams.
-**Expected behavior / acceptance criteria:** CI coverage
-validated via `simCalibrationSim`-style study against a bootstrap reference,
-similar to how QF/CF were validated against the existing bootstrap for `lm`/`glm`. Before that though, the calibration style validation simulations.
-**Files:**
-- Functions: `RESI/R/resi_asymptotic.R`, `RESI/R/resi.R` (`resi.lmerMod`,
-  `resi.lme`), `RESI/R/resi_pe.R` (`resi_pe.lmerMod`, new `resi_pe.lme`?)
-- Output: Similar to the existing function outputs with estimates and CIs.
+**Status:** Point estimator implemented and calibrated; asymptotic CIs
+implemented for `lmerMod` and `lme` provisionally (derivation note
+`notes/resi_mixed_ci.qmd`, not yet reviewed by Simon); validated on egsingle
+and, out of sample, on `mlmRev::star` (Goal 5d).
+
+**Point estimator (`RESI/R/resi_pe_mixed.R`).** `resi_pe.lmerMod` and
+`resi_pe.lme` return one `RESI` per coefficient (`z2S`, with `unbiased`) and
+per ANOVA term (`chisq2S`), with a **term-specific normalizing count**
+(Lyu & Welsh, 2022):
+- terms constant within the outermost grouping factor (intercept and
+  school-level covariates such as `size_100`, `lowinc_10`) use `n = g`,
+  the number of outermost groups (schools);
+- all other terms use the number of groups at `level` (outermost = 1; for
+  `egsingle`, `level = 2` gives `n = N` students). If `level` is omitted,
+  level 1 is used with a message.
+- A scalar `n` overrides the count for every term.
+Extra columns (`include_level = TRUE`): `Term`, `n`, `Variation level` (the
+lowest design level at which the term varies), `n level` (the grouping factor
+whose count is `n`), and `Var prop <group>` (share of the design column's
+sum of squares between units of each grouping factor, outermost first; the
+remainder is within the innermost group). Covariance: `vcovfunc`
+(default `clubSandwich::vcovCR`, `type = "CR3"` unless given; the calibration
+uses `stats::vcov`). `cluster` sets the robust-variance cluster independently
+of `n`. Tests: `RESI/tests/testthat/test-resi-mixed-scale.R`.
+**Do not change the scaling factor without asking Simon first.**
+
+**Asymptotic regime and targets.** With g schools and average m students per
+school, the RESI depends on the design. Calibration targets the Lyu-Welsh
+g, m -> Inf limit evaluated at the full-data ML estimates
+(`lyuLimitResi()`); the exact finite-m value of the expected design is
+`expectedDesignResi()` (both in `RESI/R/mixed_simulations.R`). Between-school
+terms have a finite-m gap (school-level precision is
+`g / (tau2_school + sigma2_w / m)`), partly clustered student covariates
+(`black`, `hispanic`) a smaller one, and purely within-school terms (`year`,
+`female`) essentially none. See `notes/resi_mixed_model_levels.qmd`.
+
+**CIs (`RESI/R/resi_mixed_ci.R`, provisional).** `resi.lmerMod(...,
+ci.method = c("normal", "qf", "cf", "none"), ci.design = TRUE)` adds
+`2.5%`/`97.5%` columns; `resi.lme()` has the same arguments (shared helper
+`.resiMixedWithCi()`). lme fits are mapped to the lme4 representation by
+`.mixedCiBaseLme()` (pdSymm/pdLogChol/pdDiag/pdIdent; fits with
+varStruct/corStruct or other pdMat classes warn and return point estimates).
+Var(R_hat) is estimated from outermost-cluster (school) influence values:
+outcome noise through beta_hat, sampling of the per-school information I_s
+(random design, `ci.design`), the unit count n_k when it counts units below
+the school, the meat U_s U_s' (robust only), and, for the model-based
+covariance, the variance-component (psi) uncertainty via a numerical (RE)ML
+Hessian. These feed the existing normal/QF/CF algorithms in
+`resi_asymptotic.R`. `vcovfunc = stats::vcov` gives the model-based version;
+`clubSandwich::vcovCR` the robust one. CR2 for unweighted `lmerMod` and
+supported `lme` fits with a cluster uses the internal `.mixedCiCR2()` (identical to clubSandwich,
+much faster). The four review questions at the end of the note were
+answered with the proposed defaults because Simon was unavailable; revisit.
+
+**Files:** `RESI/R/resi_pe_mixed.R`, `RESI/R/resi.R` (`resi.lmerMod`,
+`resi.lme`), `RESI/R/resi_asymptotic.R`, `RESI/R/mixed_simulations.R`.
 
 ### Goal 3: `resi_pe`/`resi` methods for `gam` and `bam` (mgcv)
 **Status:** Not started
@@ -214,7 +167,16 @@ a coefficients-style table (parametric terms) and an ANOVA-style table
   sandwich (does `sandwich::vcovHC` support `gam`/`bam` objects? needs checking)? Let's do the default Bayesian approach first.
 - Is `bam`'s fast/`discrete = TRUE` fitting path in scope, or only the
   standard `bam` fit? Let's start with default bam fit and revisit once we know that works.
-**Expected behavior / acceptance criteria:** [FILL IN]
+**Expected behavior / acceptance criteria:** (SNV, 2026-11-17)
+1. Run calibration simulations first, as for the mixed model: the
+   population (truth) RESI values must be defined and the MC expectations of
+   the point estimates must converge to them, with model SEs matching the MC
+   SD. These must look as good as the mixed-model results before CIs are developed.
+2. RESI point estimates for penalized smooth terms have not been developed or
+   evaluated, so consistency is not guaranteed. Compare several ways of
+   obtaining the point estimates; some F and chi-square statistics reported by
+   mgcv can be biased (e.g. non-uniform p-values under the null). Use the mgcv
+   documentation for guidance.
 **Files:**
 - Functions: `RESI/R/resi_pe.R`, `RESI/R/resi.R`, `RESI/R/resi_asymptotic.R`
 - Output: Similar functionality to other methods in the package. There shouldn't be a CS-RESI here -- even if gam is using lmer to fit, it is not truly a mixed model and L-RESI should just be called RESI if we use lme4/nlme machinery to get the effect sizes and CIs.
@@ -250,204 +212,63 @@ done." Proposed for `gamm`:
 **Files:** [FILL IN]
 
 ### Goal 5: Validation (plasmode + calibration, per paper structure)
-**Status:** **5a is the immediate priority / starting point for this project**
-(per your note); 5b/5c depend on Goal 1 dataset+formula confirmation.
-**Description:** For each new method (Goals 2-4), follow the paper's three-step
-verification.
+**5a. Hybrid plasmode calibration (done for the point estimator).**
+`RESI::hybridPlasmodeSim()` (`RESI/R/mixed_simulations.R`), run by
+`tests/run_hybrid_plasmode.R`, writes
+`resiLongCalibrationSim/hybrid_plasmode_{summary,resi_summary}.rds`; the
+report is `resiLongCalibrationSim/calibration_report.Rmd`.
+Design per replicate:
+1. Draw `n_schools` school profiles with replacement from the 60 schools;
+   within each, draw students with replacement, `round(n_per_site * m_i / mean(m_i))`
+   of them (proportional to observed size m_i). Each student keeps all rows
+   and every draw gets a new id.
+2. Generate `math = X beta + b_school + b_child + e` from the full-data ML
+   Model A fit; random effects are drawn with replacement from the BLUP pools,
+   each centred and rescaled to the fitted variance component (1/G
+   variance); `e ~ N(0, sigma2)`.
+3. Refit Model A by REML; compute `resi_pe(fit, vcovfunc = stats::vcov, level = 2)`.
+Grid: `n_schools in {15,30,60,100}` x `n_per_site in {25,100,200}`,
+1000 replicates per cell, `RNGkind("L'Ecuyer-CMRG")`, `set.seed(2026)`,
+24 cores (~1.5 h).
+Reported per cell: successful fits; coefficient and variance-component bias;
+`mean_model_se / mc_sd` (target 1); MC SD scaled by `sqrt(n_k)` relative to
+the Lyu-Welsh per-unit SE `sqrt(n_k V_kk)`, with design-averaged per-unit SE
+ticks (`designAveragedSe()`, the finite-(g, m) reference; cached in
+`resiLongCalibrationSim/design_averaged_se.rds`); RESI means relative to the
+Lyu limit with fixed-m bands S_m. Figure: between-school terms vs
+within-school terms in separate columns.
+Why not resample real outcomes: a full two-stage bootstrap of the real data
+gave inconsistent SEs (Simon's hypothesis: unmodelled slope heterogeneity);
+history archived in `log/claudeLog.md`.
 
-**5a. Simulation-internal-consistency / calibration check (START HERE).**
-Before any new RESI-variance formula is derived (we don't yet have one for
-`lmer`/`lme`/`gam`/`gamm`), confirm the plasmode resampling machinery itself is
-sound: draw resamples from the full `egsingle` (and/or `muscatine`) data, refit
-the model in each replicate, and check that as replicate sample size grows,
-  (i) the Monte Carlo average of the fixed-effect coefficients converges to the
-      full-data (population) coefficient estimates,
-  (ii) the Monte Carlo average of the variance components (residual variance,
-       random-effect variances/covariances, or smoothing parameters for `gam`)
-       converges to the full-data values,
-  (iii) the Monte Carlo *standard error* (empirical SD across replicates) of
-       each coefficient/variance-component estimator converges to the
-       full-data model-based (or sandwich/cluster-robust) standard error.
-This is exactly analogous to `simCalibrationSim`'s existing calibration checks
-for `lm`/`glm`, but does **not** yet include a RESI-variance check, since that
-requires Goal 2/3's (not-yet-derived) asymptotic variance of the RESI for these
-model types.
+**5b. Trusted reference.** Coverage is evaluated against the known
+simulation truth (Lyu limit and S_m), so no bootstrap reference is required
+for the mixed-model CIs.
 
-**Working model formulas for `egsingle` (confirmed 2026-09-04 — fit with and
-without a random slope for `year`):**
-- Fixed effects (shared): `math ~ year + female + black + hispanic + size_100 + lowinc_10`,
-  where `size_100 = size / 100` (school enrollment in hundreds of students) and
-  `lowinc_10 = lowinc / 10` (percent low-income in units of 10 percentage
-  points) are fixed-divisor rescalings (not z-scores), applied identically to
-  every replicate, so coefficients stay directly interpretable. Raw `size` is on
-  a very different scale than the other covariates (range 113-1486, SD 312.6,
-  vs. e.g. `year` SD 1.39) and caused an `lme4` convergence warning
-  (`max|grad| = 0.0023`); after rescaling `size`/`lowinc` and switching to
-  `lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5))`, both Model A
-  and Model B fit with 0 convergence warnings on the full data.
-- Model A (random intercepts only): `lmer(... + (1 | schoolid/childid))`;
-  `lme(..., random = ~1 | schoolid/childid)`; `gamm(math ~ s(year) + female + ...,
-  random = list(schoolid = ~1, childid = ~1))`
-- Model B (random slope for `year` at the child level, random intercept at the
-  school level): `lmer(... + (1 + year | childid) + (1 | schoolid))`;
-  `lme(..., random = list(schoolid = ~1, childid = ~1 + year))`; `gamm(math ~
-  s(year) + female + ..., random = list(schoolid = ~1, childid = ~1 + year))`
-- [FILL IN if wrong] A fully-crossed double-nested random slope
-  (`(1+year|schoolid/childid)`) was avoided as likely over-parameterized/hard to
-  converge with only 60 schools; flag if you wanted that instead of the
-  intercept-only school + slope-at-child form above.
-- `egsingle` has 60 schools total (children/school: min 5, median 24, mean 28.7,
-  max 89). The nested 3-level structure (measurement occasion in child in
-  school) means plasmode resampling must be **two-stage**: draw `n_schools`
-  schools with replacement, then within each drawn school draw (with
-  replacement) as many children as that source school originally had, keeping
-  each child's full row set (all occasions) intact. Implemented as
-  `.longSimBuildIndex()`/`.longSimResampleHierarchical()` in `RESI/R/simulations.R`;
-  a single-stage (pool-all-children) version was tried first and is
-  methodologically wrong for this nesting — replaced.
-- Random-effect (variance component) standard errors are **not** computed/tracked
-  (per your "Don't care about SEs for RFX"); only fixed-effect SEs are used for
-  the Monte-Carlo-SD-vs-model-SE calibration ratio. Variance-component point
-  estimates are still tracked (bias vs. full-data truth).
+**5c. CI coverage** for the mixed-model CIs (Goal 2):
+`tests/run_mixed_ci_coverage.R` (reduced grid `n_schools in {15,100}` x
+`n_per_site in {25,200}`, 1000 replicates, seed 2027, ~3 h on 24 cores) writes
+`resiLongCalibrationSim/mixed_ci_coverage.rds`; results are in the
+"Confidence interval coverage" section of the calibration report. The full
+grid has not been run. Each replicate is fitted with both lmer and
+`nlme::lme` (column `engine`); `mixed_ci_engine_agreement.rds` holds the
+maximum lme-lmer difference per cell. Result: lme coverage is within 0.012 of lmer; nlme's
+optimiser fails to converge in up to 19% of replicates (g = 100, m = 200),
+which are excluded from the lme rows. The coverage code is dataset-agnostic
+(`tests/mixed_ci_coverage_lib.R`).
 
-**Full-scale run results (2026-09-05):** Ran `main.R` on the server
-(`nsim = 1000`, `n_schools.vec = c(15, 30, 60, 90, 120)`, `model = "both"`,
-`mc.cores.reps = 24`) — completed with 1000/1000 successful fits in every one
-of the 10 (model x `n_schools`) cells (0 `lme4` convergence failures anywhere).
-Results in `resiLongCalibrationSim/summary_table.rds` (not git-tracked, see
-`.gitignore`). Key findings:
-- **Fixed-effect bias:** shrinks toward 0 with `n_schools` for every
-  coefficient in both models, as expected (MC mean converges to the full-data
-  truth).
-- **Fixed-effect SE calibration is a two-tier pattern, not uniform
-  convergence to 1:**
-  - School-level covariates (`size_100`, `lowinc_10`) and the intercept:
-    `mean_model_se / mc_sd` converges nicely to ~1.0 by `n_schools = 60` (e.g.
-    `lowinc_10`: 0.85 -> 0.94 -> 1.01 -> 0.99 -> 1.01 for
-    `n_schools = 15,30,60,90,120`).
-  - Child-level, time-invariant covariates (`female`, `black`, `hispanic`) and
-    the occasion-level covariate `year`: the ratio stays essentially **flat**
-    across the whole `n_schools` range and never approaches 1 — `female`/
-    `black`/`hispanic` plateau around **0.7** and `year` plateaus around
-    **0.3-0.4**, in *both* Model A (no random slope) and Model B (random slope
-    for `year`), even though `n_children` grows 8x (432 -> 3440) over the same
-    range. Model-based SEs for these coefficients are substantially
-    underestimated relative to the true (plasmode) resampling variability, and
-    this does **not** resolve with more data.
-  - Working hypothesis (not yet confirmed): the two-stage resampling draws
-    children **with replacement** within each drawn school. Because the
-    number of children drawn per school equals that school's original size,
-    the expected fraction of *distinct* real children per replicate is a
-    roughly constant ~63% regardless of `n_schools` (birthday-paradox-style),
-    so a persistent fraction of "children" in every replicate are exact
-    byte-for-byte duplicates of another child in the same replicate, re-keyed
-    to a new `childid` and fit as if independent. This likely inflates the
-    apparent number of independent level-2/level-1 clusters `lme4` sees,
-    understating the fixed-effect SE for any covariate whose value is
-    determined at the child level (or below) — but not for school-level
-    covariates, since whole schools (with their real, once-realized random
-    intercept) are the resampling unit there and duplicating a whole school is
-    a textbook-valid cluster bootstrap draw. **Not yet verified** — would need
-    a follow-up experiment (e.g. resample children *without* replacement, or
-    compare against a child-level-only bootstrap) to confirm before relying on
-    this for Goal 2's effective-`n` question.
-- **Variance components:** `var_Residual`, `var_childid(:schoolid)_(Intercept)`,
-  `var_childid_year`, and the `(Intercept)`/`year` covariance are all well
-  calibrated (relative bias magnitude <=~5% at `n_schools=120`, generally
-  shrinking or flat-small). **`var_schoolid_(Intercept)` (the between-school
-  variance) is the exception: relative bias *grows* from about -1% to -2% at
-  `n_schools=15,30` (where `n_schools <= 60`, the real number of schools) out
-  to **-28% to -35%** at `n_schools = 60, 90, 120` — i.e. the MC mean
-  increasingly *overestimates* the full-data between-school variance once
-  `n_schools` approaches/exceeds the real pool of 60 schools. Likely related
-  to the same with-replacement-oversampling-beyond-the-population-size
-  mechanism above, but also not yet confirmed.
-- **Practical implication:** this is directly relevant to the open Goal 2
-  design question about the effective sample size `n` for L-RESI ("the unit
-  really depends on study design... code should try to figure it out"/report
-  it) — these results are early empirical evidence that a single "number of
-  schools" (or "number of children") scaling won't correctly calibrate SEs for
-  *all* fixed effects simultaneously in a 3-level design; the correct unit
-  plausibly differs by which level a covariate varies at.
-- **Not yet done:** confirming the with-replacement-duplication hypothesis;
-  deciding whether `n_schools` values above 60 (oversampling beyond the real
-  school pool) should be dropped from future sweeps or are informative as-is.
-
-**Figures (2026-09-05):** Added `longitudinalCalibrationFigures()` to
-`RESI/R/simulations.R`, following `simFigures()`/`simCalibrationFigures()`'s
-base-graphics/PDF conventions (log-x `n_schools` axis, one colored line per
-term, dashed reference line at target value, legend panel). Produces one PDF
-per model (`resiLongCalibrationSim/figures/longitudinal_calibration_A.pdf`,
-`..._B.pdf`), each with 3 panels: fixed-effect bias, fixed-effect SE
-calibration (`mean_model_se/mc_sd`, target 1), and variance-component
-relative bias (%). Visually confirms the two-tier SE-calibration pattern and
-the growing `var_schoolid_(Intercept)` bias described above.
-
-**Slope-heterogeneity diagnostic (2026-09-05):** Tested the hypothesis that
-real cross-school/child heterogeneity in covariate slopes (not modeled by
-Model A's random-intercept-only structure) explains the fixed-effect SE
-mis-calibration above. Built a synthetic version of `egsingle`
-(`tests/test_egsingle_synthetic_calibration.R`, ad hoc script, not a package
-function) where `math` is simulated from Model A's own full-data fitted
-parameters via `simulate.merMod(use.u = FALSE)` — by construction every
-school/child shares the exact same fixed slope for every covariate, only
-random intercepts vary (drawn fresh from the estimated variance components),
-and residual noise is fresh iid Gaussian. Reran the same two-stage
-hierarchical resampling + refit pipeline (`nsim=1000`, same `n_schools.vec`,
-Model A only) on this synthetic data and compared `se_ratio` to the real-data
-run:
-- **`beta_year`: largely confirmed.** `se_ratio` jumped from a flat
-  ~0.31-0.33 (real data) to ~0.72-0.78 (synthetic, zero true slope
-  heterogeneity) — most of `year`'s SE mis-calibration is explained by real
-  cross-school/child heterogeneity in the true year-slope that Model A
-  (no random slope for `year`) cannot capture, so it leaks into the fixed
-  effect's sampling variability.
-- **`beta_female`/`black`/`hispanic1`: NOT explained.** `se_ratio` stayed
-  similarly poor or got slightly worse under the synthetic (zero true slope
-  heterogeneity) DGP (e.g. `black1`: 0.67-0.77 real vs. 0.52-0.56 synthetic).
-  Since these are child-level, time-invariant covariates, this points away
-  from slope heterogeneity and toward the resampling design itself (e.g. the
-  two-stage **with-replacement** child resampling re-keys duplicate real
-  children as independent clusters).
-- **`var_schoolid_(Intercept)` growing bias for `n_schools >= 60`: NOT
-  explained.** Still grows to about -18% to -24% (vs. -28% to -35% real
-  data) even with zero true slope heterogeneity — likely the same
-  with-replacement-oversampling-beyond-the-60-school-pool mechanism
-  hypothesized earlier, not slope heterogeneity.
-- `beta_(Intercept)`/`size_100`/`lowinc_10` (school-level): similar or
-  slightly worse under the synthetic DGP, doesn't cleanly resolve to 1
-  either way — inconclusive on this diagnostic alone.
-- **Not yet done:** testing the with-replacement-resampling-artifact
-  hypothesis directly (e.g. rerun with children sampled without replacement,
-  or cap `n_schools` at 60) to see if it explains the remaining
-  child-level-covariate and `var_schoolid` mis-calibration.
-
-**Consolidated report (2026-09-10):** All of the above (dataset description,
-including the 60-schools/1721-children/28.7-mean-children-per-school table,
-full simulation settings, full-scale results, and the synthetic
-slope-heterogeneity diagnostic) are consolidated in one Rmarkdown report,
-`resiLongCalibrationSim/calibration_report.Rmd`, compiled to
-`resiLongCalibrationSim/calibration_report.html` (self-contained, embeds the
-PDF figures as PNGs). Regenerate with
-`rmarkdown::render("resiLongCalibrationSim/calibration_report.Rmd")` after
-rerunning any of the underlying simulations.
-
-**5b. Validate against a trusted reference** (e.g., bootstrap RESI for
-`lmerMod`/`lme`, or the existing `geeglm` CS-RESI/L-RESI as a cross-check for
-the `lmer` case, mirroring `test-resi.R`'s `"geeglm (exchangeable, positive
-rho) L-RESI matches lmerMod (CR0) L-RESI"` test).
-
-**5c. Evaluate new CI coverage/width/bias** against the validated pipeline,
-once Goal 2/3/4's asymptotic variance derivations exist.
-**Key design decisions:**
-- Directory naming: follow `<MethodName>Sim/` convention (e.g.
-  `resiLmerAsympSim/`, `resiGamAsympSim/`). Sounds good.
-- Validation output: create a **new** article (separate from
-  `RESI/vignettes/articles/ci_validation.Rmd`) for mixed models and gams.
-**Files:** `RESI/R/simulations.R` additions; `<MethodName>Sim/` output directories
-(`sim_raw/`, `summary_table.rds`, `figures/`)
-
----
+**5d. Out-of-sample validation on `mlmRev::star`** (Tennessee STAR; chosen
+by Claude because Simon was unavailable): same framework, data preparation in
+`tests/star_data.R` (rare categories merged: `black` indicator, school type
+city/suburb/rural; student id made unique within school; `fl_10` =
+school free-lunch percentage / 10), model
+`math ~ yrs + sx + black + ses + cltype + schtype3 + fl_10 + (1 | sch/sid)`.
+`tests/run_star_validation.R [calibration|coverage]` runs the 4 x 3
+calibration grid (seed 2026) and the 2 x 2 coverage grid (seed 2027, lmer)
+and writes `resiLongCalibrationSim/star/*.rds`; report
+`resiLongCalibrationSim/star/star_validation_report.Rmd`. Replicates whose
+design loses a factor level (rank-deficient X) are counted as failed fits
+(`n_success`).
 
 <!--
 SNV: I commented this because we won't focus on bug fixes for this project.
@@ -479,3 +300,21 @@ Record settled decisions here to avoid relitigating them in future sessions.
 | Fixed Model A/B `lme4` convergence warning by standardizing `size`/`lowinc` (full-data mean/SD, fixed constants) and using `lmerControl(optimizer = "bobyqa")`; both models now fit with 0 convergence warnings | User: "consider scaling covariates first" | 2026-09-04 |
 | Confirmed nested (not crossed) 3-level design and 60 total schools (5-89 children/school, mean 28.7); implemented two-stage hierarchical plasmode resampling (schools, then children within each drawn school) in `.longSimResampleHierarchical()`, replacing the earlier single-stage (pool-all-children) prototype | User: "it is nested not crossed... you might have to resample school, then resample student" | 2026-09-04 |
 | Added `longitudinalCalibrationSim()` to `RESI/R/simulations.R` (Goal 5a), following `insurancePlasmodeSim()`'s conventions (`sim_raw/`, `summary_table.rds`), with `parallel::mclapply` over replicates defaulting to `mc.cores.reps = 24`; added `mlmRev` to `DESCRIPTION` Suggests; created `main.R` at the project root with copy-paste run lines; skipped random-effect variance-component SEs entirely | User: "Add it into simulations.R... 24 cores being the default... Write a main.R script... Don't care about SEs for RFX" | 2026-09-04 |
+| Implemented Lyu & Welsh (2022) asymptotic scaling correction in `RESI/R/resi_pe_mixed.R` (lines 144-156); between-cluster parameters now use n=n_schools, within-cluster use n=n_schools×n_per_site. Verified with 60% reduction in systematic bias slopes; re-ran 1000-replicate calibration simulations and regenerated calibration report | Systematic linear bias growth with n_per_site violated asymptotic theory; investigation revealed single normalization factor applied to all terms instead of term-specific factors per Lyu & Welsh | 2026-10-?? |
+
+| Removed the full-bootstrap pipeline (`longitudinalCalibrationSim()`, `main.R`, synthetic/plasmode/`make_*` scripts and their outputs); moved the hybrid plasmode and the Lyu-limit helpers into `RESI/R/mixed_simulations.R` (`hybridPlasmodeSim()`); history moved to `log/claudeLog.md` | User: delete superseded code (git keeps it), simulation into the package | 2026-11-15 |
+| Correction to the 2026-10-?? row above: the term-specific `n` (g for between-school, N for within-school terms) is the Lyu-Welsh normalization; the "60% reduction in bias slopes" claim was not independently verified. RESI/SE targets are the Lyu-Welsh g, m -> Inf limit at the full-data ML estimates | Settled with Simon (checkpoints 001-002) | 2026-11-15 |
+| Mixed-model CIs: model-based and robust CR2 (school-clustered) covariance; Normal/QF/CF; coverage of both the Lyu limit and S_m; reduced grid first; wire into `resi.lmerMod`/`resi.lme` | User decisions | 2026-11-15 |
+| Mixed CIs implemented with the note's proposed defaults (design term included, `ci.design = FALSE` to drop; numerical-Hessian psi term for model-based; robust drops psi and uses unadjusted U_s in the meat term; normal/chi-square quantiles; `lmerMod` only) | Simon unavailable when asked; awaiting review | 2026-11-15 |
+| Fixed a sign error in the large-noncentrality branch of `.resi_ci_qf` (`resi_asymptotic.R`; affects lm/glm QF CIs whenever n S^2 / Sigma_R or the observed statistic exceeds 1e4) | Found by the mixed CI coverage simulation (`year` ANOVA QF coverage 0.26) | 2026-11-15 |
+| `lme` CIs via mapping to the lme4 V = sigma^2(I + Z Lambda Lambda' Z') representation (`.mixedCiBaseLme()`); unsupported lme structures fall back to point estimates with a warning | User asked for lme intervals | 2026-11-16 |
+| `.resi_ci_qf` 1-df case always uses the exact identity P = Phi(sqrt(lambda) - sqrt(q)) + Phi(-sqrt(lambda) - sqrt(q)) instead of `pchisq` (which loses precision for large arguments) | Numerical accuracy; slightly changes lm/glm 1-df QF intervals | 2026-11-16 |
+| `hybridPlasmodeSim()` drops replicates whose refit has fewer fixed effects than the truth (a factor level lost in the resampled design) | Needed for `star` (rare levels); never triggered on egsingle | 2026-11-16 |
+| Out-of-sample dataset `mlmRev::star`; egsingle coverage rerun with lmer and lme in every replicate; work pushed to branch `mixed-resi-ci` in both repos, no PR | Simon unavailable when asked; defaults chosen by Claude | 2026-11-16 |
+| Review of mixed CI note: design term included (approved); numerical-Hessian psi (approved); robust CR2 version tentatively approved pending Simon's closer read; reference distribution: model-based stays normal/chi-square, t(g-1)/F(., g-1) for CR2 to be evaluated and adopted automatically (no new option) if it helps | Simon's review | 2026-11-17 |
+| Goal 3 (gam/bam) acceptance: calibration simulations of point estimates (MC mean vs truth, SE vs MC SD) must look as good as the mixed-model results before any CI work; compare several point-estimate constructions because mgcv smooth-term F/chi-square statistics can be biased | Simon | 2026-11-17 |
+| Model B (egsingle random slope): `(1 | schoolid) + (year | childid:schoolid)`; simulation code (`hybridPlasmodeSim`, `lyuLimitResi`) generalised to child-level random effects with general Z_j; school level still intercept-only | Simon chose the child-level slope specification | 2026-11-17 |
+| Mixed RESI sample size `n`: a term with a random slope at a level coarser than its own n level uses the number of units at that slope level (between-cluster terms still use g; user-supplied `n` unchanged) | Simon approved the scaling rule | 2026-11-17 |
+| CR2 (robust) mixed CIs use a t(g-1) / F(., g-1) reference automatically (`ref.df = NULL` default; model-based stays normal). QF/CF use the noise-only form (t noise, unscaled signal), integrated over W with 20-node generalized Gauss-Laguerre; g=15 coverage of S_m rose from about 0.89-0.91 to 0.92-0.94 on egsingle and STAR | Simon: "Do option 1 if it does not lose significant precision" | 2026-11-17 |
+| Goal 3 (gam/bam) design: target T1 = basis-free S_j^2 = E[(f_j - projection onto other terms)^2]/sigma^2 (fixed-basis T2 reported as diagnostic); df correction = Ref.df (edf1); covariance = mgcv default Vp only (Ve, Vc, sandwich not considered; revisit if calibration fails); zero-null-space terms (bs="re", select=TRUE, shrinkage) excluded from v1 (warn, NA); Gaussian family first | Simon (notes/resi_gam.qmd questions) | 2026-11-17 |
+| `resi_pe.gam` implemented (RESI branch `gam-resi`, PR statimagcoll/RESI#58) per the Goal 3 design. Exclusion of zero-null-space terms matches mgcv's `reTest` condition (penalized and `null.space.dim == 0`, which includes shrinkage bases and `select = TRUE`). Insurance resampling evaluation uses the full-data fixed-basis projection T2(k) (knots fixed from the full data) as the target, because T1 is not well defined under pairs resampling; to be confirmed by Simon | Simon approved gam implementation; asked for an insurance resampling evaluation with smoker x nonlinear age | 2026-11-18 |
