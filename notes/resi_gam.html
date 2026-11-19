@@ -3093,9 +3093,11 @@ window.Quarto = {
   <li><a href="#candidate-targets" id="toc-candidate-targets" class="nav-link" data-scroll-target="#candidate-targets"><span class="header-section-number">4</span> Candidate targets</a></li>
   <li><a href="#candidate-point-estimators" id="toc-candidate-point-estimators" class="nav-link" data-scroll-target="#candidate-point-estimators"><span class="header-section-number">5</span> Candidate point estimators</a></li>
   <li><a href="#first-simulation-results-gaussian" id="toc-first-simulation-results-gaussian" class="nav-link" data-scroll-target="#first-simulation-results-gaussian"><span class="header-section-number">6</span> First simulation results (Gaussian)</a></li>
-  <li><a href="#remaining-simulation-plan" id="toc-remaining-simulation-plan" class="nav-link" data-scroll-target="#remaining-simulation-plan"><span class="header-section-number">7</span> Remaining simulation plan</a></li>
-  <li><a href="#questions-for-review" id="toc-questions-for-review" class="nav-link" data-scroll-target="#questions-for-review"><span class="header-section-number">8</span> Questions for review</a></li>
-  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references"><span class="header-section-number">9</span> References</a></li>
+  <li><a href="#implementation-resi_pe.gam-resi-branch-gam-resi" id="toc-implementation-resi_pe.gam-resi-branch-gam-resi" class="nav-link" data-scroll-target="#implementation-resi_pe.gam-resi-branch-gam-resi"><span class="header-section-number">7</span> Implementation (<code>resi_pe.gam</code>, RESI branch <code>gam-resi</code>)</a></li>
+  <li><a href="#resampling-evaluation-on-resiinsurance" id="toc-resampling-evaluation-on-resiinsurance" class="nav-link" data-scroll-target="#resampling-evaluation-on-resiinsurance"><span class="header-section-number">8</span> Resampling evaluation on <code>RESI::insurance</code></a></li>
+  <li><a href="#remaining-simulation-plan" id="toc-remaining-simulation-plan" class="nav-link" data-scroll-target="#remaining-simulation-plan"><span class="header-section-number">9</span> Remaining simulation plan</a></li>
+  <li><a href="#questions-for-review" id="toc-questions-for-review" class="nav-link" data-scroll-target="#questions-for-review"><span class="header-section-number">10</span> Questions for review</a></li>
+  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references"><span class="header-section-number">11</span> References</a></li>
   </ul>
 </nav>
 </div>
@@ -3278,8 +3280,26 @@ window.Quarto = {
 <p><code>tests/run_gam_calibration.R</code> (report: <code>gamCalibrationSim/gam_calibration_report.html</code>) combines the null check and the calibration in one design: - a non-linear <code>s(x1)</code>, a linear effect fitted with <code>s(x2)</code> (x1 and x2 correlated, <span class="math inline">\(\rho = 0.5\)</span>), a null <code>s(x3)</code>, and parametric <code>w</code> (0.2) and <code>w0</code> (null); - <span class="math inline">\(n \in \{200, 1000, 5000, 20000\}\)</span>, <span class="math inline">\(k \in \{10, 20\}\)</span>, 500 replicates; - <code>gam</code> (REML) and <code>bam</code>, penalized (mgcv) and unpenalized (<code>fx = TRUE</code>).</p>
 <p>Results: - <strong>Null:</strong> rejection rates 0.03-0.06 for every engine, <span class="math inline">\(k\)</span> and <span class="math inline">\(n\)</span>. - <strong>Consistency:</strong> the mgcv RESI (<code>f2S(F, Ref.df, rdf, n)</code>) converges to T1. The relative bias is -4% / -12% (<code>s(x1)</code> / <code>s(x2)</code>) at <span class="math inline">\(n = 200\)</span>, -0.7% / -1.9% at <span class="math inline">\(n = 1000\)</span>, and below 1% at <span class="math inline">\(n \ge 5000\)</span>. It is less biased than the unpenalized reference at small <span class="math inline">\(n\)</span>. T1 = T2 in this design. - <strong><code>Ref.df</code>:</strong> under the null, <span class="math inline">\(E[T] \approx\)</span> <code>Ref.df</code> <span class="math inline">\(+ 0.25\)</span>, a bias of <span class="math inline">\(0.25/n\)</span> in <span class="math inline">\(\hat S^2\)</span>, which is negligible. - <strong>SEs:</strong> <code>w</code> SE/MC SD 0.98-1.05. Pointwise <code>Vp</code> SE / MC RMSE 0.91-1.08; the lowest is for the linear <code>s(x2)</code> at large <span class="math inline">\(n\)</span> (near the penalty null space). - The preliminary single-fit impression of a slow negative bias (earlier section) was replicate noise; it is not borne out by the Monte Carlo means.</p>
 </section>
-<section id="remaining-simulation-plan" class="level2" data-number="7">
-<h2 data-number="7" class="anchored" data-anchor-id="remaining-simulation-plan"><span class="header-section-number">7</span> Remaining simulation plan</h2>
+<section id="implementation-resi_pe.gam-resi-branch-gam-resi" class="level2" data-number="7">
+<h2 data-number="7" class="anchored" data-anchor-id="implementation-resi_pe.gam-resi-branch-gam-resi"><span class="header-section-number">7</span> Implementation (<code>resi_pe.gam</code>, RESI branch <code>gam-resi</code>)</h2>
+<p><code>resi_pe()</code> on a <code>gam</code> or <code>bam</code> fit reads <code>summary.gam</code>: - <strong>Smooths:</strong> <code>f2S(F, Ref.df, n - sum(edf), n)</code>, or <code>chisq2S(Chi.sq, Ref.df, n)</code> when the scale is known. - <strong>Factor terms:</strong> <code>pTerms.table</code>, converted the same way with their df. - <strong>Coefficients:</strong> <code>t2S</code>/<code>z2S</code>.</p>
+<p>Penalized smooths without a null space (<code>bs = &quot;re&quot;</code>, shrinkage bases, <code>select = TRUE</code>) are tested by mgcv with <code>reTest</code>, so they get <code>NA</code> and a warning. There is no overall test. <code>resi()</code> errors and points to <code>resi_pe()</code>.</p>
+</section>
+<section id="resampling-evaluation-on-resiinsurance" class="level2" data-number="8">
+<h2 data-number="8" class="anchored" data-anchor-id="resampling-evaluation-on-resiinsurance"><span class="header-section-number">8</span> Resampling evaluation on <code>RESI::insurance</code></h2>
+<p><code>tests/run_gam_insurance.R</code> (report: <code>gamCalibrationSim/gam_insurance_report.html</code>) follows <code>insurancePlasmodeSim()</code>: pairs resampling from the N = 1338 rows, n = 200 to 5000, 500 replicates. The model is</p>
+<pre><code>log10(charges) ~ smoker + sex + region + children + s(age) + s(bmi)
+                 + s(age, by = smoker) + s(bmi, by = smoker) + s(z)</code></pre>
+<ul>
+<li><code>smoker</code> is an ordered factor, so the by-smooths are the smoker minus non-smoker difference curves.</li>
+<li><code>cr</code> bases with knots fixed from the full data, <span class="math inline">\(k \in \{10, 20\}\)</span>.</li>
+<li><code>z</code> is fresh noise in each replicate, so <code>s(z)</code> is a null smooth.</li>
+</ul>
+<p><strong>Target.</strong> Under pairs resampling the population regression function is the empirical one, so the basis-free T1 is not useful. The target is the full-data projection onto the fitted basis, T2(<span class="math inline">\(k\)</span>), with <span class="math inline">\(\sigma^2\)</span> = mean squared residual (the lm convention).</p>
+<p>Results: - <strong>Null <code>s(z)</code>:</strong> rejection 0.044-0.068. - <strong>Real effects</strong> (<code>s(age)</code>, both nonlinear smoker interactions, <code>smoker</code>, <code>children</code>): -12% to +4% at n = 200, within 2% by n = 1000. The one exception is <code>s(bmi):smokeryes</code>, at -4% to -6% for n = 1000 and -1% to -2% for n = 5000. - <strong>Unpenalized fit:</strong> far worse at small n (up to -94%). - <strong><code>s(bmi)</code> (non-smokers):</strong> undetectable on the full data (<span class="math inline">\(p = 0.54\)</span>). Its target equals the <span class="math inline">\((k-1)/N\)</span> noise contribution, so the penalized estimate (near 0) lags it, at -16% / -37% at n = 5000. This is an artifact of treating the sample as the population. - <strong>Coefficient Vp SE / MC SD:</strong> 0.91-1.05; <code>smoker</code> 1.08-1.20.</p>
+</section>
+<section id="remaining-simulation-plan" class="level2" data-number="9">
+<h2 data-number="9" class="anchored" data-anchor-id="remaining-simulation-plan"><span class="header-section-number">9</span> Remaining simulation plan</h2>
 <ol type="1">
 <li><strong>Null check</strong> (<code>gam-null-check</code>, done for the Gaussian design above): <span class="math inline">\(f_j \equiv 0\)</span> for one smooth.
 <ul>
@@ -3298,8 +3318,8 @@ window.Quarto = {
 <li>Non-Gaussian families (binomial, Poisson) only after the Gaussian case is settled.</li>
 </ol>
 </section>
-<section id="questions-for-review" class="level2" data-number="8">
-<h2 data-number="8" class="anchored" data-anchor-id="questions-for-review"><span class="header-section-number">8</span> Questions for review</h2>
+<section id="questions-for-review" class="level2" data-number="10">
+<h2 data-number="10" class="anchored" data-anchor-id="questions-for-review"><span class="header-section-number">10</span> Questions for review</h2>
 <ol type="1">
 <li><strong>Target:</strong> T1 (basis-free) as the primary target, with T2 reported as a diagnostic? T1 is what users would interpret. T2 is what a fixed-<span class="math inline">\(k\)</span> fit estimates consistently. <em>Decision (SNV, 2026-11-17): T1 primary, T2 as a diagnostic.</em></li>
 <li><strong>df correction:</strong> <code>Ref.df</code> (<code>edf1</code>, which matches mgcv’s null mean), <code>edf</code>, or <span class="math inline">\(k - 1\)</span>? This only matters at <span class="math inline">\(O(1/n)\)</span>, but it is unstable for null-space terms (see the <span class="math inline">\(z\)</span> row above). <em>Decision: <code>Ref.df</code>.</em> Rationale (SNV): the <span class="math inline">\(-\text{df}\)</span> correction is the contribution of the estimator’s variance to <span class="math inline">\(E[T]\)</span>. With <span class="math inline">\(T = \hat p^\top V_r^- \hat p\)</span>, we have <span class="math inline">\(E[T] = p^\top V_r^- p + \operatorname{tr}\{V_r^-\operatorname{Cov}(\hat p)\}\)</span>, so the correct df is <span class="math inline">\(\operatorname{tr}\{V_r^-\operatorname{Cov}(\hat p)\}\)</span>. mgcv chooses <span class="math inline">\(r\)</span> and the fractional-rank weights so that this equals <span class="math inline">\(r =\)</span> <code>Ref.df</code> when <span class="math inline">\(V\)</span> is the covariance of <span class="math inline">\(\hat p\)</span>, which is the null mean noted above. The calibration simulations should check this trace directly, since <code>Vp</code> also contains a bias component, and since <span class="math inline">\(E[\hat p] \ne p\)</span> under penalization.</li>
@@ -3308,8 +3328,8 @@ window.Quarto = {
 <li><strong>Families:</strong> Gaussian first, then binomial/Poisson? <em>Decision: yes.</em></li>
 </ol>
 </section>
-<section id="references" class="level2" data-number="9">
-<h2 data-number="9" class="anchored" data-anchor-id="references"><span class="header-section-number">9</span> References</h2>
+<section id="references" class="level2" data-number="11">
+<h2 data-number="11" class="anchored" data-anchor-id="references"><span class="header-section-number">11</span> References</h2>
 <ul>
 <li>Marra, G. and Wood, S.N. (2012) Coverage properties of confidence intervals for generalized additive model components. <em>Scand. J. Stat.</em> 39, 53–74.</li>
 <li>Nychka, D. (1988) Bayesian confidence intervals for smoothing splines. <em>JASA</em> 83, 1134–1143.</li>

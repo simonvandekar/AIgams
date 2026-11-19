@@ -1,0 +1,170 @@
+---
+title: "RESI for gam fits: resampling evaluation on the insurance data"
+output:
+  html_document:
+    toc: true
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+sim <- readRDS("gam_insurance.rds")
+tab <- sim$tab
+truth <- sim$truth
+cols <- c(mgcv = "#1b9e77", unpenalized = "#d95f02")
+```
+
+# Design
+
+`tests/run_gam_insurance.R` follows `insurancePlasmodeSim()` (the lm/glm
+evaluation). The population is `RESI::insurance` (N = 1338). Each replicate
+draws $n \in \{`r paste(sim$settings$n, collapse = ", ")`\}$ rows with
+replacement (`r sim$settings$nsim` replicates). It also adds a pure-noise
+covariate $z \sim U(0, 1)$, which makes `s(z)` a null smooth. The model is
+
+```
+log10(charges) ~ smoker + sex + region + children + s(age) + s(bmi)
+                 + s(age, by = smoker) + s(bmi, by = smoker) + s(z)
+```
+
+- `smoker` is an ordered factor, so `s(age):smokeryes` and
+  `s(bmi):smokeryes` are the smoker minus non-smoker difference curves. These
+  are the nonlinear interactions.
+- All smooths are cubic regression splines (`bs = "cr"`) with
+  $k \in \{10, 20\}$. The knots are fixed from the full data, so the basis is
+  the same in every replicate.
+- Fits use `gam(method = "REML")`, penalized (mgcv default) or unpenalized
+  (`fx = TRUE`). RESI comes from `resi_pe()`:
+  - smooth terms: `f2S(F, Ref.df, n - sum(edf), n)`;
+  - factor terms: `f2S(F, df, ...)`;
+  - coefficients: `t2S`.
+
+**Target.** The target is the full-data projection onto the same basis
+(unpenalized, $\sigma^2$ = mean squared residual). This is the
+regression-spline target T2($k$) of `notes/resi_gam.qmd` and the analog of the
+lm convention. Under pairs resampling, the population's basis-free regression
+function is the empirical one, which is nearly saturated in `bmi`. T1 is
+therefore not a useful target here, and the two values of $k$ show how much the
+target depends on the basis. $S$ for `s(z)` is exactly 0.
+
+```{r targets}
+tt <- reshape(truth[truth$table == "anova", c("term", "k", "S_true")],
+              idvar = "term", timevar = "k", direction = "wide")
+names(tt) <- c("term", paste0("S_true, k = ", sim$settings$k))
+knitr::kable(tt, digits = 3, row.names = FALSE,
+             caption = "Full-data targets for the ANOVA-table terms.")
+```
+
+# Null check: `s(z)`
+
+```{r null}
+nz <- tab[tab$term == "s(z)", ]
+nt <- aggregate(cbind(reject = p < 0.05, S = S) ~ estimator + k + n, nz, mean)
+knitr::kable(nt[order(nt$estimator, nt$k, nt$n), ], digits = 3, row.names = FALSE,
+             caption = "Rejection rate at 0.05 and mean RESI for the null smooth s(z).")
+```
+
+# Calibration
+
+```{r calib, fig.width = 12, fig.height = 11}
+an <- tab[tab$table == "anova" & tab$term != "s(z)", ]
+agg <- aggregate(S ~ term + k + estimator + n, an,
+                 function(v) c(m = mean(v), se = sd(v) / sqrt(length(v))))
+agg <- cbind(agg[, 1:4], as.data.frame(agg$S))
+agg <- merge(agg, truth[truth$table == "anova", c("term", "k", "S_true")])
+terms <- c("smoker", "sex", "region", "children", "s(age)", "s(bmi)",
+           "s(age):smokeryes", "s(bmi):smokeryes")
+par(mfrow = c(4, 4), mar = c(4, 4, 2.5, 1))
+for (tm in terms) for (k in sim$settings$k) {
+  a <- agg[agg$term == tm & agg$k == k, ]
+  yl <- range(c(a$m - 2 * a$se, a$m + 2 * a$se, a$S_true))
+  plot(NA, xlim = range(a$n), ylim = yl, log = "x", xlab = "n", ylab = "MC mean of S hat",
+       main = sprintf("%s, k = %d", tm, k))
+  abline(h = a$S_true[1], lwd = 2)
+  for (e in names(cols)) {
+    b <- a[a$estimator == e, ]
+    b <- b[order(b$n), ]
+    x <- b$n * if (e == "mgcv") 0.97 else 1.03
+    lines(x, b$m, col = cols[e], type = "b", pch = 19)
+    arrows(x, b$m - 2 * b$se, x, b$m + 2 * b$se, angle = 90, code = 3, length = 0.03, col = cols[e])
+  }
+  if (tm == terms[1] && k == sim$settings$k[1])
+    legend("bottomright", names(cols), col = cols, lwd = 1, pch = 19, bty = "n")
+}
+```
+
+Black line: full-data target. Points: MC mean ± 2 MC SE.
+
+```{r biastab}
+agg$rel_bias <- (agg$m - agg$S_true) / agg$S_true
+rb <- reshape(agg[, c("term", "k", "estimator", "n", "rel_bias")],
+              idvar = c("term", "k", "estimator"), timevar = "n", direction = "wide")
+names(rb) <- sub("rel_bias.", "n = ", names(rb))
+rb <- rb[order(rb$estimator, rb$k, match(rb$term, terms)), ]
+knitr::kable(rb, digits = 3, row.names = FALSE,
+             caption = "Relative bias of the MC mean of the RESI estimate.")
+```
+
+```{r dftab}
+sm <- an[grepl("^s\\(", an$term), ]
+ed <- aggregate(cbind(edf, df) ~ term + k + estimator + n, sm, mean)
+ed <- ed[ed$estimator == "mgcv", ]
+ed <- reshape(ed[, c("term", "k", "n", "edf")], idvar = c("term", "k"),
+              timevar = "n", direction = "wide")
+names(ed) <- sub("edf.", "n = ", names(ed))
+knitr::kable(ed[order(ed$k, match(ed$term, terms)), ], digits = 2, row.names = FALSE,
+             caption = "Mean effective degrees of freedom of the penalized smooths (k - 1 is the maximum).")
+```
+
+# Coefficient standard errors
+
+```{r se}
+ce <- tab[tab$table == "coefficients" & tab$term != "(Intercept)", ]
+se <- do.call(rbind, lapply(split(ce, list(ce$term, ce$k, ce$estimator, ce$n), drop = TRUE),
+  function(d) data.frame(term = d$term[1], k = d$k[1], estimator = d$estimator[1], n = d$n[1],
+                         ratio = sqrt(mean(d$se^2)) / sd(d$est))))
+sr <- reshape(se, idvar = c("term", "k", "estimator"), timevar = "n", direction = "wide")
+names(sr) <- sub("ratio.", "n = ", names(sr))
+knitr::kable(sr[order(sr$estimator, sr$k, sr$term), ], digits = 2, row.names = FALSE,
+             caption = "Model (Vp) SE / MC SD of the coefficient estimates.")
+```
+
+# Interpretation
+
+- **Null smooth.** For `s(z)`, the rejection rate is 0.044-0.068 (MC SE
+  0.01). The mean $\hat S$ shrinks like $n^{-1/2}$ and is about half that of
+  the unpenalized fit.
+- **The penalized RESI is accurate for real effects, including the
+  nonlinear interactions.** For `s(age)`, `s(age):smokeryes`,
+  `s(bmi):smokeryes`, `smoker` and `children`, the relative bias is -12% to
+  +4% at $n = 200$. By $n \ge 1000$ it is within 2%, except
+  `s(bmi):smokeryes` (-4% to -6% at $n = 1000$, -1% to -2% at $n = 5000$).
+  This holds at both $k$. The weak `sex` and `region` terms
+  ($S \approx 0.11$-$0.16$) are biased down by 14-17% at $n = 200$ through
+  the truncation at 0, as for lm. From $n = 1000$ they are within 2%, except
+  `sex` at $k = 20$ (+3% to +5%).
+- The unpenalized regression-spline estimator, which has the same target, is
+  much worse at small $n$. Examples: `smoker` -42% / -94% at $n = 200$ for
+  $k = 10$ / 20, and the interactions -27% to -77%. This is the $O(p/n)$
+  effect of spending $4(k - 1)$ smooth df when only about 55 smokers are
+  sampled. Penalization removes most of it.
+- **`s(bmi)` is the exception, and it is a property of the target.** On the
+  full data, the non-smoker bmi curve is not detectable: $F = 0.88$
+  ($p = 0.54$) unpenalized, $p = 0.29$ penalized. The target $S^2$ (0.0061 at
+  $k = 10$; 0.0134 at $k = 20$) equals the $(k - 1)/N$ a pure-noise term
+  contributes (0.0067 and 0.0142). So the target is the $N = 1338$ sample
+  noise. Pairs resampling makes that noise a real, wiggly, tiny population
+  function. REML shrinks it toward a near-linear fit until $n \gg N$, giving
+  -16% (-37%) at $n = 5000$, $k = 10$ (20). The unpenalized fit converges to
+  it. In the superpopulation sense the penalized answer (near 0) is the
+  sensible one. The same artifact adds about $\text{df}/N$ to the target
+  $S^2$ of every term, but it is negligible for the others.
+- **edf** of the penalized smooths grows with $n$ (e.g. `s(age)` 2 to 6 at
+  $k = 10$). The bootstrap population's function is not exactly smooth, so
+  mgcv's limit is the fixed-$k$ projection T2($k$), the target used here.
+- **Coefficient SEs (Vp)** match the MC SD (0.91-1.05), except for the
+  `smoker` main effect (1.08-1.20, conservative). The `smoker` coefficient
+  is correlated with the by-smooths, whose smoothing parameters are treated
+  as fixed.
+- **Conclusion:** `resi_pe()` for gam behaves as in the synthetic Gaussian
+  simulation on a real data set with factor-by interactions. The only
+  substantial bias is for an effect that is absent in the data.

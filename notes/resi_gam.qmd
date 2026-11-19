@@ -196,6 +196,52 @@ Results:
 - The preliminary single-fit impression of a slow negative bias (earlier
   section) was replicate noise; it is not borne out by the Monte Carlo means.
 
+## Implementation (`resi_pe.gam`, RESI branch `gam-resi`)
+
+`resi_pe()` on a `gam` or `bam` fit reads `summary.gam`:
+- **Smooths:** `f2S(F, Ref.df, n - sum(edf), n)`, or `chisq2S(Chi.sq, Ref.df, n)`
+  when the scale is known.
+- **Factor terms:** `pTerms.table`, converted the same way with their df.
+- **Coefficients:** `t2S`/`z2S`.
+
+Penalized smooths without a null space (`bs = "re"`, shrinkage bases,
+`select = TRUE`) are tested by mgcv with `reTest`, so they get `NA` and a
+warning. There is no overall test. `resi()` errors and points to `resi_pe()`.
+
+## Resampling evaluation on `RESI::insurance`
+
+`tests/run_gam_insurance.R` (report: `gamCalibrationSim/gam_insurance_report.html`)
+follows `insurancePlasmodeSim()`: pairs resampling from the N = 1338 rows,
+n = 200 to 5000, 500 replicates. The model is
+
+```
+log10(charges) ~ smoker + sex + region + children + s(age) + s(bmi)
+                 + s(age, by = smoker) + s(bmi, by = smoker) + s(z)
+```
+
+- `smoker` is an ordered factor, so the by-smooths are the smoker minus
+  non-smoker difference curves.
+- `cr` bases with knots fixed from the full data, $k \in \{10, 20\}$.
+- `z` is fresh noise in each replicate, so `s(z)` is a null smooth.
+
+**Target.** Under pairs resampling the population regression function is
+the empirical one, so the basis-free T1 is not useful. The target is the
+full-data projection onto the fitted basis, T2($k$), with
+$\sigma^2$ = mean squared residual (the lm convention).
+
+Results:
+- **Null `s(z)`:** rejection 0.044-0.068.
+- **Real effects** (`s(age)`, both nonlinear smoker interactions, `smoker`,
+  `children`): -12% to +4% at n = 200, within 2% by n = 1000. The one
+  exception is `s(bmi):smokeryes`, at -4% to -6% for n = 1000 and -1% to -2%
+  for n = 5000.
+- **Unpenalized fit:** far worse at small n (up to -94%).
+- **`s(bmi)` (non-smokers):** undetectable on the full data ($p = 0.54$). Its
+  target equals the $(k-1)/N$ noise contribution, so the penalized estimate
+  (near 0) lags it, at -16% / -37% at n = 5000. This is an artifact of
+  treating the sample as the population.
+- **Coefficient Vp SE / MC SD:** 0.91-1.05; `smoker` 1.08-1.20.
+
 ## Remaining simulation plan
 
 1. **Null check** (`gam-null-check`, done for the Gaussian design above): $f_j \equiv 0$ for one smooth.

@@ -1516,3 +1516,14 @@ once Goal 2/3/4's asymptotic variance derivations exist.
 - `w` SE ratio 0.98-1.05; pointwise Vp SE/RMSE 0.91-1.08.
 - Results summarized in `notes/resi_gam.qmd`. Next: SNV approval for
   `resi_pe.gam` implementation.
+
+## Goal 3: resi_pe.gam and insurance resampling evaluation
+- RESI branch `gam-resi` (cca18e6): `resi_pe.gam` (Vp Wald statistics,
+  Ref.df, NA for reTest terms), `resi.gam` error, tests (9), Collate and
+  NEWS. Full suite on the branch: 161 pass.
+- PRs opened (not merged): statimagcoll/RESI#57, simonvandekar/AIgams#1.
+- `tests/run_gam_insurance.R`: pairs resampling from insurance, with
+  smoker-by-age and smoker-by-bmi difference smooths and a null s(z);
+  report `gamCalibrationSim/gam_insurance_report.html`. Penalized RESI
+  within 2% by n = 1000 for real effects. s(bmi) is a null effect whose
+  bootstrap-world target is N-sample noise.
