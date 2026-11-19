@@ -1518,7 +1518,7 @@ once Goal 2/3/4's asymptotic variance derivations exist.
   `resi_pe.gam` implementation.
 
 ## Goal 3: resi_pe.gam and insurance resampling evaluation
-- RESI branch `gam-resi` (cca18e6): `resi_pe.gam` (Vp Wald statistics,
+- RESI branch `gam-resi` (cca18e6; PR statimagcoll/RESI#58): `resi_pe.gam` (Vp Wald statistics,
   Ref.df, NA for reTest terms), `resi.gam` error, tests (9), Collate and
   NEWS. Full suite on the branch: 161 pass.
 - PRs opened (not merged): statimagcoll/RESI#57, simonvandekar/AIgams#1.
