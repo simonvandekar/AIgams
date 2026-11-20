@@ -1,6 +1,6 @@
 ---
 title: "RESI for mgcv `gam` / `bam` fits"
-subtitle: "Documentation review, target and estimator decisions (nothing implemented yet)"
+subtitle: "Documentation review, target and estimator decisions, calibration"
 author: "RESI package project notes"
 date: 2026-11-17
 format:
@@ -129,25 +129,60 @@ Observations, to be confirmed by simulation:
   sample. The df correction then varies from fit to fit even though the
   target does not.
 
-## Candidate targets
+## Target: the fixed-basis projection T2($k$)
 
-- **T1, basis-free (proposed primary).** The population additive model
-  $E[y \mid x] = \beta_0 + \sum_j f_j(x_j) + x_p^\top\beta_p$ has
-  $S_j^2 = E[\{f_j(X_j) - \Pi_{-j} f_j\}^2] / \sigma^2$. Here $\Pi_{-j}$ is
-  the population projection onto the other model terms, so $S_j^2$ is the
-  variance explained by smooth $j$ beyond the other terms, scaled by the
-  residual variance. For a single-df linear term it reduces to the usual
-  RESI. It does not depend on the basis or $k$, so it is the quantity users
-  would interpret.
-- **T2, fixed-basis regression-spline limit.** The same quantity with $f_j$
-  replaced by its projection onto the span of the term's basis (dimension
-  $k_j - 1$). This is the large-$n$ limit of the fitted model when $k$ is
-  fixed. T2 $\le$ T1, and T2 $\to$ T1 as $k$ grows for smooth $f$. The gap
-  is the basis-truncation error, which `gam.check` / `k.check` diagnose.
+*Decision (SNV, 2026-11-20): T2($k$) is the target, for consistency with
+RESI for other (possibly misspecified) models. A basis-free target T1 would
+need a nonparametric approach ($k$ growing with $n$) and is deferred.*
 
-In the plasmode setting, the truth can be computed from a large-$n$
-unpenalized fit (T2) or a large-$k$ fit (approximately T1), in the same way
-that the Lyu limit was computed from full-data estimates.
+**Link to the original RESI.** For a block of $d$ coefficients with
+asymptotic covariance $\Sigma_j$ of $\sqrt n(\hateta_j - eta_j)$, the Wald
+statistic is approximately $\chi^2_d(\lambda)$ with
+$\lambda = neta_j^	op\Sigma_j^{-1}eta_j$, and $S_j^2 = \lambda/n$. Since
+$E[T] pprox d + nS_j^2$, the estimator is $\hat S^2 = (T - d)/n$. For a
+smooth, the coefficients are those of the term's basis, and the quadratic
+form does not depend on how the basis is parameterized (it is invariant to
+$eta_j 	o Aeta_j$), so $S_j$ is a property of the fitted function.
+
+**Definition.** Fix the bases (type, $k$, knots). Let $b$ be the coefficients
+of the population least-squares projection of $m(x) = E[y \mid x]$ onto the
+model's columns $X$, $e = y - X^	op b$ the working residual, and
+$A = E[XX^	op]$. Then $S_j^2 = b_j^	op[V_{jj}]^{-1}b_j$ with
+
+- **parametric** (homoskedastic working model, the limit of `Vp`):
+  $V = \sigma_k^2A^{-1}$, $\sigma_k^2 = E[e^2] = E[\operatorname{var}(y\mid x)] + E[(m - X^	op b)^2]$;
+- **robust** (the limit of the sandwich): $V = A^{-1}E[XX^	op e^2]A^{-1}$.
+
+Under a homoskedastic model with no truncation error, both reduce to the
+variance explained by term $j$ beyond the other terms,
+$E[\{f_j - \Pi_{-j}f_j\}^2]/\sigma^2$, i.e. a population partial Cohen's $f^2$.
+Truncation error enters both the numerator (the projection replaces $f_j$)
+and the denominator (it inflates $\sigma_k^2$, and makes $e$ heteroskedastic,
+so the two versions differ).
+
+**Consistency.** With $k$ fixed and $\hat\lambda/n 	o 0$, the penalized fit
+converges to the unpenalized regression spline, `Vp` $	o \hat\sigma^2(X^	op X)^{-1}$,
+`Ref.df` $	o k - 1$, and $(T_j - r)/n 	o$ the parametric T2($k$); with the
+sandwich in place of `Vp` it converges to the robust T2($k$). When the true
+term lies in the penalty null space (e.g. linear), $\hat\lambda 	o \infty$
+only removes components whose target value is zero, so the limit is the
+same. The behaviour of $\hat\lambda$ is mgcv's responsibility; the calibration
+simulation includes a realistic case where $\hat\lambda \gg n$ at moderate $n$
+(a weak non-linear effect) to measure the finite-sample consequence.
+
+T2($k$) depends on the basis type, $k$ and knot placement, as the mixed-model
+RESI depends on the design. With mgcv's default `k = 10` users implicitly
+choose the target, so `k` should be reported.
+
+**Covariance.** *Decision (SNV, 2026-11-20): use the parametric covariance
+(`Vp`) unless existing software provides an accurate robust one.* mgcv
+provides `vcov.gam(sandwich = TRUE)` (an HC1-type sandwich with the `Vp`
+bread plus the smoothing-bias term), which the calibration simulation
+evaluates against the robust T2($k$).
+
+In the plasmode setting the truth is the full-data unpenalized fit on the
+same fixed basis, with $\sigma_k^2$ the mean squared residual (as for the Lyu
+limit, computed from full-data estimates).
 
 ## Candidate point estimators
 
@@ -172,29 +207,26 @@ d. The existing default `resi_pe` path applied to a gam (with `edf` as df),
 For parametric terms, the standard coefficient conversion is used with
 `Vp` (and `Ve` as a check).
 
-## First simulation results (Gaussian)
+## Calibration results (Gaussian)
 
 `tests/run_gam_calibration.R` (report: `gamCalibrationSim/gam_calibration_report.html`)
-combines the null check and the calibration in one design:
-- a non-linear `s(x1)`, a linear effect fitted with `s(x2)` (x1 and x2
-  correlated, $\rho = 0.5$), a null `s(x3)`, and parametric `w` (0.2) and
-  `w0` (null);
-- $n \in \{200, 1000, 5000, 20000\}$, $k \in \{10, 20\}$, 500 replicates;
-- `gam` (REML) and `bam`, penalized (mgcv) and unpenalized (`fx = TRUE`).
+fits `y ~ s(x1) + s(x2) + s(x3) + w + w0` with $k \in \{5, 10, 20\}$,
+$n \in \{200, 1000, 5000, 20000\}$, 500 replicates, `gam` (REML; `bam` in
+base), penalized and unpenalized, each scored with `Vp` and the mgcv sandwich
+against the parametric and robust T2($k$). Scenarios: base (sin, linear,
+homoskedastic); step (threshold effect, truncation error); weak_curve
+(U-shaped effect, $S \approx 0.07$); hetero (error SD depending on $w$, $x_1$).
 
-Results:
-- **Null:** rejection rates 0.03-0.06 for every engine, $k$ and $n$.
-- **Consistency:** the mgcv RESI (`f2S(F, Ref.df, rdf, n)`) converges to T1.
-  The relative bias is -4% / -12% (`s(x1)` / `s(x2)`) at $n = 200$, -0.7% /
-  -1.9% at $n = 1000$, and below 1% at $n \ge 5000$. It is less biased than
-  the unpenalized reference at small $n$. T1 = T2 in this design.
-- **`Ref.df`:** under the null, $E[T] \approx$ `Ref.df` $+ 0.25$, a bias of
-  $0.25/n$ in $\hat S^2$, which is negligible.
-- **SEs:** `w` SE/MC SD 0.98-1.05. Pointwise `Vp` SE / MC RMSE 0.91-1.08;
-  the lowest is for the linear `s(x2)` at large $n$ (near the penalty null
-  space).
-- The preliminary single-fit impression of a slow negative bias (earlier
-  section) was replicate noise; it is not borne out by the Monte Carlo means.
+- **Null:** rejection 0.03-0.06 everywhere, except the unpenalized sandwich at
+  $n = 200$ (0.074).
+- **Consistency:** each covariance converges to its own T2($k$) (within 1% at
+  $n = 20000$; 2.3% for weak_curve). In step the estimates track T2($k$)
+  separately for each $k$.
+- **Finite $n$:** -3% to -17% at $n = 200$, under 4% by $n = 1000$, except
+  weak_curve, where REML shrinks the curve to a line in half the samples at
+  $n = 200$: -36% / -29% / -6% at $n$ = 200 / 1000 / 5000.
+- **SEs:** `w` SE/MC SD 0.97-1.05 for both covariances under homoskedasticity;
+  under heteroskedasticity `Vp` gives 0.72-0.82 and the sandwich 0.92-1.00.
 
 ## Implementation (`resi_pe.gam`, RESI branch `gam-resi`)
 
@@ -225,7 +257,7 @@ log10(charges) ~ smoker + sex + region + children + s(age) + s(bmi)
 - `z` is fresh noise in each replicate, so `s(z)` is a null smooth.
 
 **Target.** Under pairs resampling the population regression function is
-the empirical one, so the basis-free T1 is not useful. The target is the
+the empirical one. The target is the
 full-data projection onto the fitted basis, T2($k$), with
 $\sigma^2$ = mean squared residual (the lm convention).
 
@@ -249,14 +281,14 @@ Results:
    - Compare the distribution of $\hat S^2$, i.e. the null bias at $S = 0$.
    - Use smooth and linear alternatives for the other terms, $n \in
      \{200, 1000, 5000\}$, REML.
-2. **Calibration** (`gam-calibration-sim`; first Gaussian design done above;
-   still to add: wigglier $f$ with binding $k$, stronger concurvity, and a
-   real-data plasmode): Gaussian identity link.
+2. **Calibration** (`gam-calibration-sim`; Gaussian scenarios including a
+   binding $k$, a weak curve and heteroskedasticity done above, and the
+   insurance plasmode; still to add: stronger concurvity): Gaussian identity link.
    - Effects: a non-linear smooth, a linear term fitted with `s()`, a
      parametric covariate, and a concurvity case.
    - $n$ from 200 to 20000, $k \in \{10, 20\}$, 1000 replicates. Include
      `gam` (REML) and `bam` (default, `discrete = FALSE`).
-   - Compare the MC mean against T1 and T2, and the model SE against the MC
+   - Compare the MC mean against T2($k$), and the model SE against the MC
      SD, in the same format as the mixed-model calibration report.
    - Then repeat with a plasmode on a real dataset.
 3. Non-Gaussian families (binomial, Poisson) only after the Gaussian case is
@@ -264,10 +296,9 @@ Results:
 
 ## Questions for review
 
-1. **Target:** T1 (basis-free) as the primary target, with T2 reported as a
-   diagnostic? T1 is what users would interpret. T2 is what a fixed-$k$ fit
-   estimates consistently.
-   *Decision (SNV, 2026-11-17): T1 primary, T2 as a diagnostic.*
+1. **Target:** T1 (basis-free) or T2 (fixed basis)?
+   *Decision (SNV, 2026-11-17): T1 primary. Revised (SNV, 2026-11-20): T2($k$)
+   is the target; T1 needs a nonparametric approach and is deferred.*
 2. **df correction:** `Ref.df` (`edf1`, which matches mgcv's null mean),
    `edf`, or $k - 1$? This only matters at $O(1/n)$, but it is unstable for
    null-space terms (see the $z$ row above).
@@ -285,9 +316,10 @@ Results:
    fine to also include `Ve`, `Vc` and the mgcv sandwich in the calibration
    simulations only, so that the final choice is evidence-based? None would
    be exposed as a user option unless needed.
-   *Decision: use the mgcv defaults (`Vp`) only.* **`Ve`, `Vc` and the sandwich
-   have not been considered**; revisit them if calibration shows problems
-   (e.g. SE/MC SD far from 1, or $\hat\lambda$ poorly identified).
+   *Decision: use the mgcv defaults (`Vp`).* Revised (SNV, 2026-11-20): use
+   the parametric covariance unless an accurate robust covariance exists in
+   software; mgcv's sandwich is evaluated in the calibration simulation.
+   `Ve` and `Vc` have not been considered.
 4. **Scope:** exclude zero-null-space terms (`bs = "re"`, `select = TRUE`,
    shrinkage bases) from the first version, warn and return `NA`? mgcv itself
    does not use a Wald test for them.

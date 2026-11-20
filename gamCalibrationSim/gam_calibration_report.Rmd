@@ -7,9 +7,11 @@ output:
     self_contained: true
 ---
 
-<!-- [AI-generated: GitHub Copilot, 2026-11-18]
+<!-- [AI-generated: GitHub Copilot, 2026-11-18; revised 2026-11-20]
      [Prompt summary: Goal 3 report — null check and calibration of RESI point
-      estimates for gam/bam fits from tests/run_gam_calibration.R.] -->
+      estimates for gam/bam fits against the fixed-basis target T2(k), with
+      parametric (Vp) and sandwich covariances, from
+      tests/run_gam_calibration.R.] -->
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
@@ -17,61 +19,90 @@ library(knitr)
 sim <- readRDS("gam_calibration.rds")
 tab <- sim$tab
 curves <- sim$curves
-tab$method <- paste(tab$engine, tab$estimator)
-methods <- c("gam mgcv", "bam mgcv", "gam unpenalized", "bam unpenalized")
-m_cols <- setNames(c("#1b9e77", "#66c2a5", "#d95f02", "#fc8d62"), methods)
+tab$method <- paste(tab$engine, tab$estimator, tab$cov)
+tab$target <- ifelse(tab$cov == "Vp", tab$S_T2, tab$S_T2r)
+methods <- c("gam mgcv Vp", "gam mgcv sandwich", "gam unpenalized Vp", "gam unpenalized sandwich")
+m_cols <- setNames(c("#1b9e77", "#1b9e77", "#d95f02", "#d95f02"), methods)
 m_lty <- setNames(c(1, 2, 1, 2), methods)
 nsim <- sim$settings$nsim
 n_grid <- sim$settings$n
 k_grid <- sim$settings$k
+scen <- sim$settings$scenarios
+k0 <- 10
+sc_lab <- c(base = "base", step = "step (threshold x1)", weak_curve = "weak_curve (U-shaped x2)",
+            hetero = "hetero (sd depends on w, x1)")
+mc_mean <- function(d) do.call(data.frame, aggregate(S ~ scenario + term + k + method + n, d,
+                                                     function(s) c(mean = mean(s), sd = sd(s))))
 ```
 
 # Design
 
 Simulation from `tests/run_gam_calibration.R` (design and decisions:
-`notes/resi_gam.qmd`). The data are Gaussian with $\sigma = 1$ and
+`notes/resi_gam.qmd`). Every scenario fits
 
-$$y = \sin(2\pi x_1) + 0.5\,x_2 + 0\cdot x_3 + 0.2\,w + 0\cdot w_0 + \varepsilon,$$
+`y ~ s(x1, k) + s(x2, k) + s(x3, k) + w + w0`, $k \in \{`r paste(k_grid, collapse = ", ")`\}$,
 
-where $x_1, x_2$ are uniform and correlated through a Gaussian copula
-($\rho = `r sim$dgp$rho`$), giving some concurvity. $x_3$ is uniform, and
-$w, w_0 \sim N(0, 1)$, all independent of each other and of $(x_1, x_2)$.
-Each replicate draws one data set per $n \in \{`r paste(n_grid, collapse = ", ")`\}$
-(`r nsim` replicates) and fits `y ~ s(x1, k) + s(x2, k) + s(x3, k) + w + w0`
-with $k \in \{`r paste(k_grid, collapse = ", ")`\}$, using:
+to Gaussian data with $x_1, x_2$ uniform and correlated through a Gaussian
+copula ($\rho = 0.5$, some concurvity), $x_3$ uniform and
+$w, w_0 \sim N(0, 1)$ independent. `s(x3)` and `w0` are null.
 
-- **mgcv** (penalized; the estimator under evaluation): `gam(method = "REML")` or
-  `bam()` (default fREML). The smooth-term RESI is
-  `f2S(F, Ref.df, residual df, n)` from `summary()`, i.e. mgcv's Wald
-  statistic with the Bayesian `Vp` and the `Ref.df` correction. The
-  coefficient RESI is `t2S(t, residual df, n)`.
-- **unpenalized** (reference): the same with `fx = TRUE`, an ordinary
-  regression spline with $k - 1$ df per smooth.
+| Scenario | Mean | Error SD | What it probes |
+|---|---|---|---|
+| base | $\sin(2\pi x_1) + 0.5x_2 + 0.2w$ | 1 | well-specified reference |
+| step | $0.8\cdot 1(x_1 > 0.5) + 0.5x_2 + 0.2w$ | 1 | basis truncation error: T2 depends on $k$ |
+| weak_curve | $\sin(2\pi x_1) + 0.25(2x_2 - 1)^2 + 0.2w$ | 1 | weak non-linear effect; REML $\hat\lambda \gg n$ at small $n$ |
+| hetero | base | $\exp\{0.4w + 0.6(x_1 - 0.5)\}$ | heteroskedasticity: parametric and robust targets differ |
 
-The targets are T1, the basis-free $S_j$
-($S_j^2 = E[\{f_j - \Pi_{-j} f_j\}^2]/\sigma^2$, with the projection computed on a
-$2 \times 10^5$ sample with rich bases), and T2, the fixed-$k$
-regression-spline limit.
+Each replicate draws one data set per scenario and
+$n \in \{`r paste(n_grid, collapse = ", ")`\}$ (`r nsim` replicates). The
+fits are `gam(method = "REML")` and, in the base scenario only, `bam()`
+(fREML), each **penalized** (mgcv default; the estimator under evaluation) and
+**unpenalized** (`fx = TRUE`, a regression spline with $k - 1$ df per smooth,
+for reference). Every fit is scored with two covariances:
+
+- **Vp**: mgcv's default (parametric, Bayesian) covariance, as used by
+  `summary.gam`. Smooth RESI is `f2S(F, Ref.df, residual df, n)`; coefficient
+  RESI is `t2S(t, residual df, n)`.
+- **sandwich**: `vcov.gam(sandwich = TRUE)` substituted for `Vp` in
+  `summary.gam`, same conversions.
+
+**Target.** T2(k) is the Wald noncentrality per observation of the
+fixed-basis projection: let $b$ be the coefficients of the population least
+squares projection of $E[y \mid x]$ on the size-$k$ (default `tp`) bases, $e$
+the working residual and $A = E[XX^\top]$. Then
+$S_j^2 = b_j^\top [V_{jj}]^{-1} b_j$ with
+
+- parametric: $V = \sigma_k^2 A^{-1}$, $\sigma_k^2 = E[e^2]$ (the limit of `Vp`), column `S_T2`;
+- robust: $V = A^{-1}E[XX^\top e^2]A^{-1}$ (the limit of the sandwich), column `S_T2r`.
+
+They are computed from a noiseless sample of $2\times 10^5$, using
+$E[e^2 \mid x] = \mathrm{sd}(x)^2 + \{E[y\mid x] - Xb\}^2$. Vp estimates are
+compared with `S_T2` and sandwich estimates with `S_T2r`. The two coincide
+unless the working residual is heteroskedastic.
 
 ```{r truth}
-kable(sim$truth, digits = 4, row.names = FALSE, caption = "Population targets")
+tr <- sim$truth[sim$truth$term %in% c("x1", "x2", "w"), ]
+tr <- reshape(tr[, c("scenario", "term", "k", "S_T2", "S_T2r")], idvar = c("scenario", "term"),
+              timevar = "k", direction = "wide")
+kable(tr[order(match(tr$scenario, scen)), ], digits = 4, row.names = FALSE,
+      caption = "T2(k) targets for the non-null terms (parametric S_T2 and robust S_T2r, by k)")
 ```
 
 # Null check
 
-$x_3$ (smooth) and $w_0$ (parametric) have no effect. Under the null, the
-p-values should be uniform and $\hat S$ should be close to zero.
+Rejection rates at 0.05 for the null smooth `s(x3)` and null coefficient `w0`
+($k = `r k0`$; all $k$ in the table). The grey band is $0.05 \pm 1.96$ MC SE.
 
-```{r null-pvalues, fig.width = 10, fig.height = 6.5}
+```{r null-pvalues, fig.width = 10, fig.height = 11}
 null <- tab[tab$term %in% c("x3", "w0"), ]
-rej <- aggregate(p ~ term + k + method + n, null, function(p) mean(p < 0.05))
+rej <- aggregate(p ~ scenario + term + k + method + n, null, function(p) mean(p < 0.05))
 names(rej)[names(rej) == "p"] <- "reject_05"
-par(mfrow = c(2, length(k_grid)), mar = c(4, 4, 2.5, 1))
-for (tm in c("x3", "w0")) for (k in k_grid) {
-  d <- rej[rej$term == tm & rej$k == k, ]
+par(mfrow = c(length(scen), 2), mar = c(4, 4, 2.5, 1))
+for (sc in scen) for (tm in c("x3", "w0")) {
+  d <- rej[rej$scenario == sc & rej$term == tm & rej$k == k0, ]
   plot(NA, xlim = range(n_grid), ylim = c(0, max(0.12, d$reject_05)), log = "x",
        xlab = "n", ylab = "Rejection rate at 0.05",
-       main = sprintf("%s, k = %d", if (tm == "x3") "s(x3) (null smooth)" else "w0 (null coefficient)", k))
+       main = sprintf("%s: %s", sc_lab[[sc]], if (tm == "x3") "s(x3)" else "w0"))
   se <- 1.96 * sqrt(0.05 * 0.95 / nsim)
   rect(1, 0.05 - se, 1e6, 0.05 + se, col = "gray90", border = NA)
   abline(h = 0.05, lty = 2, col = "gray40")
@@ -80,170 +111,180 @@ for (tm in c("x3", "w0")) for (k in k_grid) {
     dm <- dm[order(dm$n), ]
     lines(dm$n, dm$reject_05, col = m_cols[[m]], lty = m_lty[[m]], type = "b", pch = 19)
   }
-  if (tm == "x3" && k == k_grid[1])
+  if (sc == scen[1] && tm == "x3")
     legend("topright", legend = methods, col = m_cols, lty = m_lty, pch = 19, bty = "n", cex = 0.8)
 }
 ```
 
-```{r null-qq, fig.width = 10, fig.height = 3.6}
-n_cols <- hcl.colors(length(n_grid), "viridis")
-par(mfrow = c(1, 4), mar = c(4, 4, 2.5, 1))
-for (m in methods) {
-  d <- null[null$term == "x3" & null$method == m & null$k == max(k_grid), ]
-  plot(NA, xlim = c(0, 1), ylim = c(0, 1), xlab = "Uniform quantile", ylab = "p-value quantile",
-       main = sprintf("%s, s(x3), k = %d", m, max(k_grid)))
-  abline(0, 1, col = "gray40")
-  for (i in seq_along(n_grid)) {
-    p <- sort(d$p[d$n == n_grid[i]])
-    lines(ppoints(length(p)), p, col = n_cols[i])
-  }
-  if (m == methods[1]) legend("topleft", legend = paste("n =", n_grid), col = n_cols, lty = 1, bty = "n", cex = 0.8)
-}
-```
-
 ```{r null-table}
-null_s <- do.call(data.frame, aggregate(S ~ term + k + method + n, null, function(s) c(mean = mean(s), sd = sd(s))))
-null_tab <- merge(rej, null_s, by = c("term", "k", "method", "n"))
-null_tab <- null_tab[order(null_tab$term, null_tab$k, null_tab$method, null_tab$n), ]
-names(null_tab) <- c("term", "k", "method", "n", "reject at 0.05", "mean S", "MC SD S")
-kable(null_tab, digits = 3, row.names = FALSE,
-      caption = "Null terms: rejection rate and distribution of the RESI estimate")
+rw <- reshape(rej, idvar = c("scenario", "term", "k", "method"), timevar = "n", direction = "wide")
+rw <- rw[order(match(rw$scenario, scen), rw$term, rw$k, rw$method), ]
+names(rw) <- sub("reject_05.", "n = ", names(rw))
+kable(rw, digits = 3, row.names = FALSE, caption = "Null terms: rejection rate at 0.05")
 ```
 
 # Calibration of the point estimates
 
-The MC mean of $\hat S$ is plotted against $n$ for each non-null term. The
-black line is T1 and the grey dashed line is T2. The error bars are
-$\pm 2$ MC SE.
+MC mean of $\hat S$ against $n$ ($k = `r k0`$). Solid black: parametric target
+`S_T2`; dashed black: robust target `S_T2r` (indistinguishable except in
+hetero). Error bars: $\pm 2$ MC SE.
 
-```{r calib, fig.width = 11, fig.height = 7}
-cal <- do.call(data.frame, aggregate(S ~ term + k + method + n, tab, function(s) c(mean = mean(s), sd = sd(s))))
-cal <- merge(cal, sim$truth, by = c("term", "k"))
-terms <- c("x1", "x2", "w")
-labels <- c(x1 = "s(x1): sin(2 pi x1)", x2 = "s(x2): 0.5 x2", w = "w: 0.2 w")
-par(mfrow = c(length(k_grid), length(terms)), mar = c(4, 4, 2.5, 1))
-for (k in k_grid) for (tm in terms) {
-  d <- cal[cal$term == tm & cal$k == k, ]
+```{r calib, fig.width = 11, fig.height = 13}
+cal <- mc_mean(tab[tab$term %in% c("x1", "x2", "w"), ])
+cal <- merge(cal, sim$truth, by = c("scenario", "term", "k"))
+cal$target <- ifelse(grepl("Vp$", cal$method), cal$S_T2, cal$S_T2r)
+labels <- c(x1 = "s(x1)", x2 = "s(x2)", w = "w")
+par(mfrow = c(length(scen), 3), mar = c(4, 4, 2.5, 1))
+for (sc in scen) for (tm in names(labels)) {
+  d <- cal[cal$scenario == sc & cal$term == tm & cal$k == k0 & cal$method %in% methods, ]
   mcse <- 2 * d$S.sd / sqrt(nsim)
-  plot(NA, xlim = range(n_grid) * c(0.9, 1.1), ylim = range(c(d$S.mean - mcse, d$S.mean + mcse, d$S_T1)),
-       log = "x", xlab = "n", ylab = "MC mean of S hat", main = sprintf("%s, k = %d", labels[[tm]], k))
-  abline(h = d$S_T1[1], lwd = 2)
-  abline(h = d$S_T2[1], lty = 2, col = "gray50")
+  plot(NA, xlim = range(n_grid) * c(0.85, 1.15),
+       ylim = range(c(d$S.mean - mcse, d$S.mean + mcse, d$S_T2, d$S_T2r)),
+       log = "x", xlab = "n", ylab = "MC mean of S hat", main = sprintf("%s: %s", sc_lab[[sc]], labels[[tm]]))
+  abline(h = d$S_T2[1], lwd = 2)
+  abline(h = d$S_T2r[1], lwd = 2, lty = 2)
   for (m in methods) {
     dm <- d[d$method == m, ]
     dm <- dm[order(dm$n), ]
-    x <- dm$n * (1 + 0.04 * (match(m, methods) - 2.5))
+    x <- dm$n * (1 + 0.05 * (match(m, methods) - 2.5))
     lines(x, dm$S.mean, col = m_cols[[m]], lty = m_lty[[m]], type = "b", pch = 19)
     se <- 2 * dm$S.sd / sqrt(nsim)
     arrows(x, dm$S.mean - se, x, dm$S.mean + se, col = m_cols[[m]], angle = 90, code = 3, length = 0.02)
   }
-  if (tm == "x1" && k == k_grid[1])
+  if (sc == scen[1] && tm == "x1")
     legend("bottomright", legend = methods, col = m_cols, lty = m_lty, pch = 19, bty = "n", cex = 0.8)
 }
 ```
 
+## Dependence on $k$ (step scenario)
+
+With a threshold effect the basis cannot represent $f_1$, so T2(k) increases
+with $k$. The penalized estimator should track the target for its own $k$
+(horizontal lines, same colour).
+
+```{r calib-k, fig.width = 8, fig.height = 4.2}
+k_cols <- setNames(hcl.colors(length(k_grid), "Dark 3"), k_grid)
+par(mfrow = c(1, 2), mar = c(4, 4, 2.5, 1))
+for (cv in c("Vp", "sandwich")) {
+  d <- cal[cal$scenario == "step" & cal$term == "x1" & cal$method == paste("gam mgcv", cv), ]
+  plot(NA, xlim = range(n_grid) * c(0.85, 1.15), ylim = range(c(d$S.mean, d$target)), log = "x",
+       xlab = "n", ylab = "MC mean of S hat", main = sprintf("step: s(x1), gam mgcv %s", cv))
+  for (k in k_grid) {
+    dk <- d[d$k == k, ]
+    dk <- dk[order(dk$n), ]
+    abline(h = dk$target[1], col = k_cols[[as.character(k)]])
+    lines(dk$n, dk$S.mean, col = k_cols[[as.character(k)]], type = "b", pch = 19)
+  }
+  legend("bottomright", legend = paste("k =", k_grid), col = k_cols, lty = 1, pch = 19, bty = "n", cex = 0.8)
+}
+```
+
 ```{r calib-table}
-cal$bias_T1 <- cal$S.mean - cal$S_T1
-cal$rel_bias_T1 <- cal$bias_T1 / cal$S_T1
-ct <- cal[cal$term %in% terms, ]
-ct <- ct[order(ct$term, ct$k, ct$method, ct$n), c("term", "k", "method", "n", "S_T1", "S.mean", "bias_T1", "rel_bias_T1", "S.sd")]
-kable(ct, digits = 4, row.names = FALSE, caption = "MC mean and bias of S hat relative to T1")
+cal$rel_bias <- (cal$S.mean - cal$target) / cal$target
+cal$method <- factor(cal$method)
+cw <- reshape(cal[, c("scenario", "term", "k", "method", "target", "n", "rel_bias")],
+              idvar = c("scenario", "term", "k", "method", "target"), timevar = "n", direction = "wide")
+cw <- cw[order(match(cw$scenario, scen), cw$term, cw$k, cw$method), ]
+names(cw) <- sub("rel_bias.", "n = ", names(cw))
+kable(cw, digits = 3, row.names = FALSE,
+      caption = "Relative bias of the MC mean of S hat against its T2(k) target (Vp: S_T2; sandwich: S_T2r)")
 ```
 
 # Is `Ref.df` the right bias correction?
 
 The $-\text{df}$ correction removes the contribution of the estimator's
-variance to $E[T]$: $E[T] = n S^2 + \operatorname{tr}\{V_r^-\operatorname{Cov}(\hat p)\}$
-when $\hat p$ is unbiased. mgcv's construction makes this trace equal to
-`Ref.df` when `Vp` is the covariance of $\hat p$. On the scale used by
-`f2S`, the diagnostic below is the effective df,
-$E[F\,r\,(\text{rdf}-2)/\text{rdf}] - n S^2_{T1}$, compared with the MC mean
-of `Ref.df`. Penalization also shrinks the signal part of $T$, so a negative
-gap mixes a too-large df with smoothing bias. The gap divided by $n$ is the
-bias of $\hat S^2$ before truncation. The MC SE of the effective df grows like
-$\sqrt{n} S$, so the check is informative only for null and weak terms
-(`s(x3)`, `s(x2)`); for `s(x1)` at large $n$ it is noise.
+variance to $E[T]$. On the scale used by `f2S`, the diagnostic is the
+effective df, $E[F\,r\,(\text{rdf}-2)/\text{rdf}] - n S^2_{T2}$, compared with
+the MC mean of `Ref.df` (Vp only). Penalization also shrinks the signal part
+of $T$, so a negative gap mixes a too-large df with smoothing bias. The gap
+divided by $n$ is the bias of $\hat S^2$ before truncation. The MC SE of the
+effective df grows like $\sqrt{n} S$, so the check is informative only for the
+null and weak terms.
 
 ```{r df-check}
-sm <- tab[tab$term %in% c("x1", "x2", "x3"), ]
-# residual df of each fit = n - (sum of smooth edf + 3 parametric coefficients)
-fit_id <- with(sm, paste(n, rep, k, method))
-rdf <- sm$n - (ave(sm$edf, fit_id, FUN = sum) + 3)
-sm$Tstar <- sm$F * sm$ref_df * (rdf - 2) / rdf
-dfc <- aggregate(cbind(Tstar, ref_df, edf) ~ term + k + method + n, sm, mean)
-dfc$eff_df_mcse <- aggregate(Tstar ~ term + k + method + n, sm, function(v) sd(v) / sqrt(length(v)))$Tstar
-dfc <- merge(dfc, sim$truth, by = c("term", "k"))
-dfc$eff_df <- dfc$Tstar - dfc$n * dfc$S_T1^2
+sm <- tab[tab$term %in% c("x2", "x3") & tab$cov == "Vp" & tab$k == k0 &
+          tab$scenario %in% c("base", "weak_curve"), ]
+fit_id <- with(tab, paste(scenario, n, rep, k, method))
+rdf_all <- tab$n - (ave(ifelse(tab$term %in% c("x1", "x2", "x3"), tab$edf, 0), fit_id, FUN = sum) + 3)
+sm$rdf <- rdf_all[as.numeric(rownames(sm))]
+sm$Tstar <- sm$F * sm$ref_df * (sm$rdf - 2) / sm$rdf
+dfc <- aggregate(cbind(Tstar, ref_df, edf, S_T2) ~ scenario + term + method + n, sm, mean)
+dfc$eff_df_mcse <- aggregate(Tstar ~ scenario + term + method + n, sm, function(v) sd(v) / sqrt(length(v)))$Tstar
+dfc$eff_df <- dfc$Tstar - dfc$n * dfc$S_T2^2
 dfc$S2_bias <- (dfc$eff_df - dfc$ref_df) / dfc$n
-kable(dfc[order(dfc$term, dfc$k, dfc$method, dfc$n),
-          c("term", "k", "method", "n", "edf", "ref_df", "eff_df", "eff_df_mcse", "S2_bias")],
+kable(dfc[order(dfc$scenario, dfc$term, dfc$method, dfc$n),
+          c("scenario", "term", "method", "n", "edf", "ref_df", "eff_df", "eff_df_mcse", "S2_bias")],
       digits = 3, row.names = FALSE,
-      caption = "Mean edf, mean Ref.df, and effective df = E[F Ref.df (rdf-2)/rdf] - n S_T1^2; S2_bias = (effective df - Ref.df) / n")
+      caption = sprintf("k = %d. Mean edf, mean Ref.df, and effective df = E[F Ref.df (rdf-2)/rdf] - n S_T2^2; S2_bias = (effective df - Ref.df) / n", k0))
 ```
 
 # Standard errors
 
-For the coefficient of $w$, the table compares the mean model SE (from
-`Vp`) with the MC SD of the estimate. For the smooths, `Vp` is a Bayesian
-covariance that includes the expected squared smoothing bias. Its pointwise
-SEs should therefore match the root MC mean squared error of $\hat f_j$ on
-a grid of $x$ ("across-the-function" calibration; Marra & Wood 2012), rather
-than the MC SD.
+For the coefficient of $w$, the mean SE from each covariance is compared with
+the MC SD of the estimate. For the smooths, `Vp` is a Bayesian covariance that
+includes the expected squared smoothing bias. Its pointwise SEs should
+therefore match the root MC mean squared error of $\hat f_j$ against the
+fixed-basis projection, approximated here by the true $f_j$ (exact except in
+step, where truncation adds a small bias). This is the across-the-function
+calibration of Marra & Wood (2012).
 
 ```{r se-table}
-w <- tab[tab$term == "w", ]
-se_w <- do.call(data.frame, aggregate(cbind(se, est) ~ k + method + n, w, function(v) c(mean = mean(v), sd = sd(v))))
+w <- tab[tab$term == "w" & tab$k == k0, ]
+se_w <- do.call(data.frame, aggregate(cbind(se, est) ~ scenario + method + n, w,
+                                      function(v) c(mean = mean(v), sd = sd(v))))
 se_w$ratio <- se_w$se.mean / se_w$est.sd
-kable(se_w[order(se_w$k, se_w$method, se_w$n), c("k", "method", "n", "se.mean", "est.sd", "ratio")],
-      digits = 4, row.names = FALSE, caption = "w: mean model SE / MC SD of the coefficient")
+sw <- reshape(se_w[, c("scenario", "method", "n", "ratio")], idvar = c("scenario", "method"),
+              timevar = "n", direction = "wide")
+names(sw) <- sub("ratio.", "n = ", names(sw))
+kable(sw[order(match(sw$scenario, scen), sw$method), ], digits = 3, row.names = FALSE,
+      caption = sprintf("w (k = %d): mean SE / MC SD of the coefficient", k0))
 
-cv <- split(curves[curves$term != "x3", ],
-            with(curves[curves$term != "x3", ], list(term, k, engine, estimator, n)), drop = TRUE)
+cc <- curves[curves$term != "x3" & curves$k == k0, ]
+cv <- split(cc, with(cc, list(scenario, term, engine, estimator, n)), drop = TRUE)
 se_f <- do.call(rbind, lapply(cv, function(d) {
-  pt <- t(sapply(split(d, d$x), function(z) c(se2 = mean(z$se^2), var = var(z$fit), mse = mean((z$fit - z$truth)^2))))
-  data.frame(term = d$term[1], k = d$k[1], method = paste(d$engine[1], d$estimator[1]), n = d$n[1],
-             ratio_rmse = sqrt(mean(pt[, "se2"]) / mean(pt[, "mse"])),
-             ratio_sd = sqrt(mean(pt[, "se2"]) / mean(pt[, "var"])))
+  pt <- t(sapply(split(d, d$x), function(z) c(se2 = mean(z$se^2), mse = mean((z$fit - z$truth)^2))))
+  data.frame(scenario = d$scenario[1], term = d$term[1], method = paste(d$engine[1], d$estimator[1]),
+             n = d$n[1], ratio = sqrt(mean(pt[, "se2"]) / mean(pt[, "mse"])))
 }))
-kable(se_f[order(se_f$term, se_f$k, se_f$method, se_f$n), ], digits = 3, row.names = FALSE,
-      caption = "Smooths: sqrt(mean pointwise SE^2) / sqrt(MC MSE) and / MC SD, averaged over the x grid")
+sf <- reshape(se_f, idvar = c("scenario", "term", "method"), timevar = "n", direction = "wide")
+names(sf) <- sub("ratio.", "n = ", names(sf))
+kable(sf[order(match(sf$scenario, scen), sf$term, sf$method), ], digits = 3, row.names = FALSE,
+      caption = sprintf("Smooths (k = %d, Vp): sqrt(mean pointwise SE^2) / sqrt(MC MSE), averaged over the x grid", k0))
 ```
 
 # Interpretation
 
-- **Null check.** For the null smooth `s(x3)` and the null coefficient `w0`,
-  rejection rates at 0.05 are 0.03-0.06 for every engine, $k$ and $n$,
-  within Monte Carlo error of 0.05. The mgcv p-values (which ignore
-  smoothing-parameter uncertainty) are not anti-conservative in this
-  design. The null mean of $\hat S$ is small and shrinks like $n^{-1/2}$, as
-  expected for a truncated estimator.
-- **Point estimates are consistent for T1.** For `gam` and `bam`, the
-  relative bias of the mgcv RESI against the basis-free target T1 is
-  -4% (`s(x1)`) and -12% (`s(x2)`, small $S$, so truncation matters) at
-  $n = 200$. It is -0.7% and -1.9% at $n = 1000$, and below 1% at
-  $n \ge 5000$, for both $k = 10$ and $k = 20$. T1 and T2 coincide here
-  (the bases represent both functions well).
-- The penalized estimator is *less* biased than the unpenalized
-  regression-spline reference at small $n$. The same holds for the
-  coefficient of `w` (-5.6% vs -11% to -20% at $n = 200$, $k = 20$). This
-  is the usual $O(p/n)$ effect: the unpenalized model spends $3(k-1)$ df,
-  which inflates the coefficient's sampling variance relative to its
-  population value. The penalized fit spends only its edf. It vanishes by
-  $n = 1000$-5000.
-- **`Ref.df` as the bias correction.** For the null smooth, the effective df
-  ($E[T]$ under $H_0$) is about 1.65-1.75 against a mean `Ref.df` of
-  1.42-1.46. Ref.df therefore under-corrects by about 0.25, a bias of
-  $0.25/n$ in $\hat S^2$, which is negligible next to its SE. The unpenalized
-  reference matches $k - 1$, as it should. For non-null terms the check is
-  within MC error.
-- **Standard errors.** The model SE of the `w` coefficient matches its MC SD
-  (ratios 0.98-1.05). The pointwise `Vp` SEs of the smooths match the MC RMSE
-  within 0.91-1.08. The lowest ratios (about 0.91 at large $n$) are for the
-  linear `s(x2)`, where $\hat\lambda$ is poorly identified (near the penalty
-  null space). This is consistent with mgcv's warning that smoothing-parameter
-  uncertainty is ignored, and would be the first place to revisit `Vc` if
-  intervals undercover.
-- **Not yet covered:** non-Gaussian families, stronger concurvity, wigglier
-  functions where the basis dimension $k$ is binding (where T1 and T2
-  separate), a real-data plasmode, and the SE of the RESI itself (needed for
-  CIs, deferred by design).
+Numbers below are for `gam`, $k = 10$, unless stated; `bam` matches `gam`
+in the base scenario.
+
+- **Null check.** Rejection rates for `s(x3)` and `w0` are 0.03-0.06 in every
+  scenario and for both covariances, including hetero. The one exception is
+  the *unpenalized* fit with the sandwich at $n = 200$ (`s(x3)`, 0.074-0.076),
+  the usual small-sample liberality of an HC1 sandwich with 27 parameters.
+- **Both covariances are consistent for their own T2($k$).** By
+  $n = 20000$ every non-null term is within 1% of its target (2.3% for
+  weak_curve). In hetero the two targets differ (`w`: 0.165 parametric vs
+  0.129 robust), and the Vp and sandwich estimates each converge to theirs.
+- **The estimator tracks T2($k$), not a basis-free value.** In step, T2 for
+  `s(x1)` is 0.337 / 0.355 / 0.360 for $k$ = 5 / 10 / 20, and the mgcv
+  estimates at $n = 20000$ are within 0.002 of the target for their own $k$.
+- **Finite-$n$ bias.** In the base, step and hetero scenarios the penalized
+  RESI is -3% to -17% at $n = 200$ (largest for the small-$S$ `s(x2)` and the
+  step), -4% or less at $n = 1000$, and under 1% from $n = 5000$. It is less
+  biased than the unpenalized fit with the same covariance at small $n$.
+- **Weak curve (large $\hat\lambda$).** For the U-shaped `s(x2)`
+  ($S \approx 0.073$), REML chose an essentially linear fit (edf < 1.1) in 49%
+  of samples at $n = 200$ and 10% at $n = 1000$. The penalized RESI is -36%,
+  -29%, -6% and -2% at $n$ = 200, 1000, 5000, 20000. The unpenalized fit is
+  less biased (-10% to -15% at $n \le 1000$) but much more variable. This is
+  the realistic case where the penalty costs the most: a weak non-linear
+  effect is shrunk towards the penalty null space until $n$ is large. Both
+  covariances behave the same here.
+- **`Ref.df`** remains an adequate bias correction (see table).
+- **Standard errors.** With homoskedastic errors, the `w` SE / MC SD is
+  0.97-1.05 for both covariances. Under heteroskedasticity, `Vp`
+  underestimates the SD (0.72-0.82) while the sandwich is 0.92-1.00. The Vp
+  *point estimate* is still consistent for the parametric target, but
+  intervals built on `Vp` would undercover in hetero, as with the parametric
+  option for other models.
+

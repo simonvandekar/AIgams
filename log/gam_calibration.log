@@ -1,0 +1,4 @@
+n = 200: 500 replicates (0 failed), 0.8 min
+n = 1000: 500 replicates (0 failed), 3.3 min
+n = 5000: 500 replicates (0 failed), 20.6 min
+n = 20000: 500 replicates (0 failed), 78.7 min

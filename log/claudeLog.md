@@ -1527,3 +1527,16 @@ once Goal 2/3/4's asymptotic variance derivations exist.
   report `gamCalibrationSim/gam_insurance_report.html`. Penalized RESI
   within 2% by n = 1000 for real effects. s(bmi) is a null effect whose
   bootstrap-world target is N-sample noise.
+
+## Goal 3: T2(k) target and calibration scenarios (2026-11-20)
+- SNV: target is T2(k), the fixed-basis projection noncentrality; T1 deferred
+  (nonparametric). Parametric covariance (Vp) unless robust software exists.
+- mgcv provides `vcov.gam(sandwich = TRUE)`; evaluated by substituting it for
+  Vp in summary.gam. Truths: parametric T2 (sigma_k^2 = E[e^2]) and robust T2.
+- `tests/run_gam_calibration.R` rewritten: scenarios base, step (truncation),
+  weak_curve (large lambda-hat), hetero; k in {5, 10, 20}; 500 reps; 2 h on 40
+  cores. Each covariance converges to its own target; estimates track T2(k)
+  per k; weak curve -36%/-29%/-6% at n = 200/1000/5000; Vp SE/MC SD
+  0.72-0.82 under heteroskedasticity, sandwich 0.92-1.00.
+- `notes/resi_gam.qmd` target section rewritten; decision logged in
+  instructions.md.
